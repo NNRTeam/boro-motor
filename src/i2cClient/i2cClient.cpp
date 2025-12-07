@@ -33,6 +33,9 @@ void I2CClient::receiveData(int length) {
         case 0x02:
             instanceWrapper->m_lastCommand = I2CCommands::MISSION_STATE;
             break;
+        case 0x03:
+            instanceWrapper->m_lastCommand = I2CCommands::ALIVE;
+            break;
         default:
             break;
         }
@@ -62,6 +65,10 @@ void I2CClient::dataRequested() {
         Mission* currentMission = instanceWrapper->m_missionManager->getCurrentMission();
         Wire.write((uint32_t)currentMission->getId());
         Wire.write((uint32_t)currentMission->getStatus());
+    }
+    else if (instanceWrapper->m_lastCommand == I2CCommands::ALIVE)
+    {
+        Wire.write((uint8_t)0xFF);
     }
 }
 

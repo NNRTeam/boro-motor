@@ -14,7 +14,8 @@ public:
 
     enum class I2CCommands : uint8_t {
         ODOM = 0x01,
-        MISSION_STATE = 0x02
+        MISSION_STATE = 0x02,
+        ALIVE = 0x03
     };
 
     I2CClient(Logger& logger, missionManager* missionManager, Robot* robot);
