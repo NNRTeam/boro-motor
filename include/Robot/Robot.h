@@ -10,12 +10,16 @@
 class Robot
 {
     public:
-        Robot(Logger logger) : m_logger(logger) {}
+        Robot(Logger logger);
 
         void run();
-        [[nodiscard]] float getX() const { return x; }
-        [[nodiscard]] float getY() const { return y; }
-        [[nodiscard]] float getTheta() const { return theta; }
+        [[nodiscard]] float getX() const { if (config::MOTOR_ODOM_ONLY) return m_motorX; else return x; }
+        [[nodiscard]] float getY() const { if (config::MOTOR_ODOM_ONLY) return m_motorY; else return y; }
+        [[nodiscard]] float getTheta() const { if (config::MOTOR_ODOM_ONLY) return m_motorTheta; else return theta; }
+
+        static void leftMotorStepNotify();
+        static void rightMotorStepNotify();
+        static Robot* instance;
 
     protected:
         void Control();
@@ -32,6 +36,10 @@ class Robot
         float y = 0.0; //m
         float theta = 0.0; //rad
 
+        float m_motorX = 0.0; //m
+        float m_motorY = 0.0; //m
+        float m_motorTheta = 0.0; //rad
+
         missionManager* m_missionManager = nullptr;
 
         Motor* motor_left;
@@ -45,9 +53,6 @@ class Robot
 
         float m_linearSpeedMotor = 0.0; //m/s
         float m_angularSpeedMotor = 0.0; //rad/s
-
-        float m_lastLinearSpeedMotor = 0.0; //m/s
-        float m_lastAngularSpeedMotor = 0.0; //rad/s
 
         unsigned long long int m_lastControlTime = 0;
     private:

@@ -20,8 +20,8 @@ unsigned int calculerTempsEntreSteps(
 }
 
 
-Motor::Motor(int dirPin, int stepPin, int sensorCS, bool invertSensor, double wheelPerimeter)
-    : PIN_DIR(dirPin), PIN_STEP(stepPin), m_WheelPerimeter(wheelPerimeter), m_is_sensor_inverted(invertSensor)
+Motor::Motor(int dirPin, int stepPin, int sensorCS, bool invertSensor, double wheelPerimeter, void (*stepCallback)())
+    : m_stepCallback(stepCallback), PIN_DIR(dirPin), PIN_STEP(stepPin), m_WheelPerimeter(wheelPerimeter), m_is_sensor_inverted(invertSensor)
 {
     m_sensor = new HallSensor(sensorCS, invertSensor);
     pinMode(PIN_DIR, OUTPUT);

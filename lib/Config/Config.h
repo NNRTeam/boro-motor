@@ -4,6 +4,7 @@
 namespace config {
 
     bool constexpr TEST = false; // Enable or disable test mode
+    bool constexpr MOTOR_ODOM_ONLY = false; // Enable or disable motor odometry only mode
 
     // HARDWARE CONFIGURATION
 

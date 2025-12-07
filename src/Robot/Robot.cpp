@@ -1,7 +1,28 @@
 #include "Robot/Robot.h"
 #include <Utils.h>
 #include <Arduino.h>
+#include <Config.h>
 
+Robot* Robot::instance = nullptr;
+
+Robot::Robot(Logger logger) : m_logger(logger)
+{
+    motor_left = new Motor(config::M1_DIR_PIN,
+                            config::M1_STEP_PIN,
+                            config::OD1_CS_PIN,
+                            false,
+                            config::M1_WHEEL_DIAMETER_MM * M_PI,
+                            Robot::leftMotorStepNotify);
+
+    motor_right = new Motor(config::M2_DIR_PIN,
+                            config::M2_STEP_PIN,
+                            config::OD2_CS_PIN,
+                            true,
+                            config::M2_WHEEL_DIAMETER_MM * M_PI,
+                            Robot::rightMotorStepNotify);
+
+    Robot::instance = this;
+}
 void Robot::run() {
     if (m_missionManager->hasActiveMissions())
         Control();
@@ -105,18 +126,18 @@ void Robot::samsonUpdateMotors()
     }
     float v;
     if (forward) {
-        v = m_lastLinearSpeedMotor + config::LINEAR_ACCELERATION_M_S2 * (m_dt / 1000000.0);
+        v = m_linearSpeedMotor + config::LINEAR_ACCELERATION_M_S2 * (m_dt / 1000000.0);
         v = utils::getMin(utils::getMax(v, 0.0f), v_max);
     } else {
-        v = m_lastLinearSpeedMotor - config::LINEAR_ACCELERATION_M_S2 * (m_dt / 1000000.0);
+        v = m_linearSpeedMotor - config::LINEAR_ACCELERATION_M_S2 * (m_dt / 1000000.0);
         v = utils::getMax(utils::getMin(v, 0.0f), -v_max); // Limite à -v_max pour le recul
     }
     if (distance < 0.01) {
         v = 0.0;
         omega = 0.0;
     }
-    m_lastLinearSpeedMotor = v;
-    m_lastAngularSpeedMotor = omega;
+    m_linearSpeedMotor = v;
+    m_angularSpeedMotor = omega;
     setSpeeds(v, omega);
 }
 
@@ -128,11 +149,11 @@ void Robot::rotationUpdateMotors()
     if (abs(angle_diff) < 0.01) { // Si l'angle est déjà atteint, arrêter le robot
         motor_left->stop();
         motor_right->stop();
-        m_lastAngularSpeedMotor = 0.0;
+        m_angularSpeedMotor = 0.0f;
         return;
     }
     // Calcul de la distance d'arrêt
-    float stop_distance = (m_lastAngularSpeedMotor * m_lastAngularSpeedMotor) / (2.0f * config::ANGULAR_ACCELERATION_RAD_S2);
+    float stop_distance = (m_angularSpeedMotor * m_angularSpeedMotor) / (2.0f * config::ANGULAR_ACCELERATION_RAD_S2);
     // Calcul de la vitesse angulaire souhaitée
     if (abs(angle_diff) < stop_distance) {
         omega_desired = utils::sign(angle_diff) * sqrt(2.0f * config::ANGULAR_ACCELERATION_RAD_S2 * abs(angle_diff));
@@ -140,9 +161,9 @@ void Robot::rotationUpdateMotors()
         omega_desired = utils::sign(angle_diff) * config::MAX_ANGULAR_VELOCITY_RAD_S;
     }
     // Lissage de l'accélération angulaire
-    float omega = m_lastAngularSpeedMotor + utils::sign(omega_desired - m_lastAngularSpeedMotor) * config::ANGULAR_ACCELERATION_RAD_S2 * (m_dt / 1000000.0);
+    float omega = m_angularSpeedMotor + utils::sign(omega_desired - m_angularSpeedMotor) * config::ANGULAR_ACCELERATION_RAD_S2 * (m_dt / 1000000.0);
     omega = utils::sign(omega_desired) * utils::getMin(abs(omega), abs(omega_desired));
-    m_lastAngularSpeedMotor = omega;
+    m_angularSpeedMotor = omega;
     setSpeeds(0.0f, omega);
 }
 
@@ -172,4 +193,27 @@ bool Robot::checkMissionArrived()
         }
     }
     return false;
+}
+
+
+void Robot::leftMotorStepNotify()
+{
+    if (instance == nullptr) return;
+    float const distance_motor = (instance->motor_left->getWheelPerimeter()) / (config::STEP_PER_REVOLUTION * config::MICROSTEPS); // in mm
+    float const robot_angle_change = distance_motor / config::M_WHEEL_BASE_MM; // in rad
+    float const avg_distance = distance_motor/2.0f; // in mm
+    instance->m_motorTheta -= robot_angle_change; // in rad
+    instance->m_motorX += avg_distance * cos(instance->m_motorTheta); // in mm
+    instance->m_motorY += avg_distance * sin(instance->m_motorTheta); // in mm
+}
+
+void Robot::rightMotorStepNotify()
+{
+    if (instance == nullptr) return;
+    float const distance_motor = (instance->motor_right->getWheelPerimeter()) / (config::STEP_PER_REVOLUTION * config::MICROSTEPS); // in mm
+    float const robot_angle_change = distance_motor / config::M_WHEEL_BASE_MM; // in rad
+    float const avg_distance = distance_motor/2.0f; // in mm
+    instance->m_motorTheta += robot_angle_change; // in rad
+    instance->m_motorX += avg_distance * cos(instance->m_motorTheta); // in mm
+    instance->m_motorY += avg_distance * sin(instance->m_motorTheta); // in mm
 }

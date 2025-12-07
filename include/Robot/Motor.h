@@ -7,11 +7,12 @@
 
 class Motor{
     public:
-        Motor(int dirPin, int stepPin, int sensorCS, bool invertSensor, double wheelPerimeter);
+        Motor(int dirPin, int stepPin, int sensorCS, bool invertSensor, double wheelPerimeter, void (*stepCallback)());
         void run();
         void setLinearSpeed(float speed);
         void stop() { m_speed = 0.0; }
         void UpdateWeelPerimeter(double weelPerimeter) { m_WheelPerimeter = weelPerimeter; }
+        [[nodiscard]] float getWheelPerimeter() const { return m_WheelPerimeter; }
         [[nodiscard]] float getFeedbackSpeed(unsigned int *dt, unsigned int *t);
     protected:
 
@@ -19,6 +20,7 @@ class Motor{
         void stepFW();
         void stepBW();
 
+        void (*m_stepCallback)();
         int PIN_DIR;          //Pin de direction
         int PIN_STEP;         //Pin de step
 
