@@ -45,7 +45,7 @@ void missionManager::endCurrentMission()
     }
 }
 
-[[nodiscard]] Mission* missionManager::startNextMission()
+Mission* missionManager::startNextMission()
 {
     if (missions.empty())
         return nullptr;

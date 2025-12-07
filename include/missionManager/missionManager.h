@@ -16,7 +16,7 @@ public:
     [[nodiscard]] bool removeMission(Mission &mission);
     [[nodiscard]] Mission* getCurrentMission();
     void endCurrentMission();
-    [[nodiscard]] Mission* startNextMission();
+    Mission* startNextMission();
     [[nodiscard]] Mission* getMissionById(int id);
     [[nodiscard]] size_t getMissionCount() const;
     [[nodiscard]] bool hasMissions() const;

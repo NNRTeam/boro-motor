@@ -15,12 +15,20 @@ void Robot::Control()
     if (currentTime - m_lastControlTime >= 1e6/config::CONTROL_LOOP_FREQUENCY_HZ) {
         updateOdometry();
         checkMissionArrived();
-        Mission* CurentMission = m_missionManager->getCurrentMission();
-        if (CurentMission->getType() == Mission::Type::GO)
+        Mission* CurrentMission = m_missionManager->getCurrentMission();
+        if (CurrentMission == nullptr) {
+            stop();
+            return;
+        }
+        else if (CurrentMission->isActive() == false) {
+            m_missionManager->startNextMission();
+        }
+
+        if (CurrentMission->getType() == Mission::Type::GO)
             samsonUpdateMotors();
-        else if (CurentMission->getType() == Mission::Type::TURN)
+        else if (CurrentMission->getType() == Mission::Type::TURN)
             rotationUpdateMotors();
-        else if (CurentMission->getType() == Mission::Type::STOP || CurentMission->getType() == Mission::Type::WAIT)
+        else if (CurrentMission->getType() == Mission::Type::STOP || CurrentMission->getType() == Mission::Type::WAIT)
             stop();
         m_lastControlTime = currentTime;
     }
