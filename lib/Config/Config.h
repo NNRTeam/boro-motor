@@ -2,7 +2,7 @@
 #define CONFIG_H
 
 namespace config {
-    
+
     // HARDWARE CONFIGURATION
 
     int constexpr M_EN_PIN = 2;
