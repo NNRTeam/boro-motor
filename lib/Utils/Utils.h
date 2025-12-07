@@ -1,20 +1,11 @@
 #ifndef UTILS_H
 #define UTILS_H
 
-
 namespace utils {
-
-    float normalizeAngle(float angle) {
-        while (angle > 3.14159265f) {
-            angle -= 2.0f * 3.14159265f;
-        }
-        while (angle < -3.14159265f) {
-            angle += 2.0f * 3.14159265f;
-        }
-        return angle;
-    }
-} // namespace utils
-
-
+    float normalizeAngle(float angle);
+    float getMin(float a, float b);
+    float getMax(float a, float b);
+    int sign(float value);
+}
 
 #endif // UTILS_H

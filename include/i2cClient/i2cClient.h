@@ -6,20 +6,29 @@
 #include <Config.h>
 #include <Logger/Logger.h>
 #include <missionManager/missionManager.h>
+#include <Robot/Robot.h>
 
 class I2CClient
 {
 public:
-    I2CClient(Logger& logger, missionManager* missionManager);
 
-    [[nodiscard]] bool begin();
+    enum class I2CCommands : uint8_t {
+        ODOM = 0x01,
+        MISSION_STATE = 0x02
+    };
+
+    I2CClient(Logger& logger, missionManager* missionManager, Robot* robot);
+
+    void begin();
     static void receiveData(int length);
     static void dataRequested();
-private:
     static I2CClient* instanceWrapper;
+private:
     void setInstanceWrapper();
     Logger& m_logger;
     missionManager* m_missionManager;
+    Robot* m_robot;
+    I2CCommands m_lastCommand = I2CCommands::ODOM;
 };
 
 #endif // I2CCLIENT_H

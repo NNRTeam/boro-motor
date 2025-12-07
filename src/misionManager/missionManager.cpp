@@ -93,7 +93,7 @@ void missionManager::endCurrentMission()
 
 [[nodiscard]] Mission* missionManager::parseMissionMessage(String const &message)
 {
-    // message format: "{ID};{TYPE_INT};{STATUS_INT};{OPTION_INT};{TARGET_X_FLOAT};{TARGET_Y_FLOAT};{TARGET_THETA_FLOAT}"
+    // message format: "{ID};{TYPE_INT};{STATUS_INT};{OPTION_INT};{DIRECTION_INT};{TARGET_X_FLOAT};{TARGET_Y_FLOAT};{TARGET_THETA_FLOAT}"
     auto parts = std::vector<String>();
     int start = 0;
     for (size_t i = 0; i < message.length(); ++i)
@@ -105,7 +105,7 @@ void missionManager::endCurrentMission()
         }
     }
     parts.push_back(message.substring(start));
-    if (parts.size() != 7)
+    if (parts.size() != 8)
     {
         m_logger.error("Invalid mission message format: " + message);
         return nullptr;
@@ -114,10 +114,19 @@ void missionManager::endCurrentMission()
     Mission::Type type = static_cast<Mission::Type>(parts[1].toInt());
     Mission::Status status = static_cast<Mission::Status>(parts[2].toInt());
     Mission::Options options = static_cast<Mission::Options>(parts[3].toInt());
-    float target_x = parts[4].toFloat();
-    float target_y = parts[5].toFloat();
-    float target_theta = parts[6].toFloat();
-    Mission* mission = new Mission(id, type, options, target_x, target_y, target_theta);
+    Mission::Direction direction = static_cast<Mission::Direction>(parts[4].toInt());
+    float target_x = parts[5].toFloat();
+    float target_y = parts[6].toFloat();
+    float target_theta = parts[7].toFloat();
+    Mission* mission = new Mission(id, type, options, direction, target_x, target_y, target_theta);
     mission->setStatus(status);
     return mission;
+}
+
+void missionManager::addFakeMissionForTest()
+{
+    Mission mission1(1, Mission::Type::GO, Mission::Options::NONE, Mission::Direction::FORWARD, 1.0f, 0.0f, 0.0f);
+    addMission(mission1);
+    Mission mission2(2, Mission::Type::TURN, Mission::Options::NONE, Mission::Direction::FORWARD, 0.0f, 0.0f, 3.14159f/2.0f);
+    addMission(mission2);
 }

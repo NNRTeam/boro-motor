@@ -3,6 +3,8 @@
 
 namespace config {
 
+    bool constexpr TEST = false; // Enable or disable test mode
+
     // HARDWARE CONFIGURATION
 
     int constexpr M_EN_PIN = 2;
@@ -15,6 +17,9 @@ namespace config {
 
     int constexpr OD1_CS_PIN = 10;
     int constexpr OD2_CS_PIN = 9;
+
+    int constexpr MICROSTEPS = 8; // Microsteps for motor driver (1, 2, 4, 8, 16)
+    int constexpr STEP_PER_REVOLUTION = 200; // Steps per revolution for the motor
 
     // MECHANICAL CONFIGURATION
 
@@ -29,6 +34,9 @@ namespace config {
 
     // MOTION CONFIGURATION
 
+    float constexpr GO_MISSION_TOLERANCE_M = 0.03f;        // Tolerance for GO missions in meters
+    float constexpr TURN_MISSION_TOLERANCE_RAD = 0.05f;     // Tolerance for TURN missions in radians
+
     float constexpr MAX_LINEAR_VELOCITY_M_S = 0.4f;    // Maximum linear velocity in metter per second
     float constexpr MAX_ANGULAR_VELOCITY_RAD_S = 2.0f;    // Maximum angular velocity in radians per second
 
@@ -38,7 +46,6 @@ namespace config {
     // SOFTWARE CONFIGURATION
 
     float constexpr CONTROL_LOOP_FREQUENCY_HZ = 25.0f; // Control loop frequency in Hertz
-    float constexpr ODOMETRY_PUBLISH_FREQUENCY_HZ = 10.0f; // Odometry publish frequency in Hertz
 
     unsigned long int constexpr SERIAL_BAUDRATE = 115200; // Serial communication baudrate
     bool constexpr ENABLE_SERIAL_DEBUG = true; // Enable or disable serial debug messages

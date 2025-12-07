@@ -25,10 +25,16 @@ class Mission
             SLOW = 1 << 0,
         };
 
+        enum class Direction {
+            FORWARD = 0,
+            BACKWARD = 1
+        };
+
         Mission(
             int id,
             Type type,
             Options options = Options::NONE,
+            Direction direction = Direction::FORWARD,
             float target_x = 0.0f,
             float target_y = 0.0f,
             float target_theta = 0.0f
@@ -36,6 +42,7 @@ class Mission
             id(id),
             type(type),
             options(options),
+            direction(direction),
             target_x(target_x),
             target_y(target_y),
             target_theta(target_theta){}
@@ -60,6 +67,8 @@ class Mission
 
         [[nodiscard]] bool isActive() const { return status == Status::STARTED; }
 
+        [[nodiscard]] bool isForward() const { return direction == Direction::FORWARD; }
+
     static String typeToString(Mission::Type type) {
         switch (type) {
             case Mission::Type::GO:     return "GO";
@@ -78,6 +87,7 @@ class Mission
         Type type;
         Status status = Status::NOT_STARTED;
         Options options = Options::NONE;
+        Direction direction = Direction::FORWARD;
 
         float target_x;
         float target_y;

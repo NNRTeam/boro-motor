@@ -23,6 +23,8 @@ public:
     [[nodiscard]] bool hasActiveMissions();
     [[nodiscard]] Mission::Type getCurrentMissionType() const;
     [[nodiscard]] Mission* parseMissionMessage(String const &message);
+
+    void addFakeMissionForTest();
 protected:
     std::vector<Mission> missions;
 

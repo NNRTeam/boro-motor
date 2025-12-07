@@ -7,7 +7,7 @@
 class Logger
 {
 public:
-    enum Level {
+    enum class Level {
         DEBUG = 0,
         INFO = 1,
         WARN = 2,
@@ -15,26 +15,26 @@ public:
         NONE = 4
     };
 
-    Logger(Level level = INFO) : logLevel(level) {}
+    Logger(Level level = Level::INFO) : logLevel(level) {}
 
     void setLogLevel(Level level) {
         logLevel = level;
     }
 
     void debug(const String &message) {
-        log(DEBUG, "DEBUG: " + message);
+        log(Level::DEBUG, "DEBUG: " + message);
     }
 
     void info(const String &message) {
-        log(INFO, "INFO: " + message);
+        log(Level::INFO, "INFO: " + message);
     }
 
     void warn(const String &message) {
-        log(WARN, "WARN: " + message);
+        log(Level::WARN, "WARN: " + message);
     }
 
     void error(const String &message) {
-        log(ERROR, "ERROR: " + message);
+        log(Level::ERROR, "ERROR: " + message);
     }
 private:
     Level logLevel;
