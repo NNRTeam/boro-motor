@@ -22,11 +22,12 @@ public:
     [[nodiscard]] bool hasMissions() const;
     [[nodiscard]] bool hasActiveMissions();
     [[nodiscard]] Mission::Type getCurrentMissionType() const;
+    [[nodiscard]] Mission* parseMissionMessage(String const &message);
 protected:
     std::vector<Mission> missions;
 
 private:
-    Logger& logger;
+    Logger& m_logger;
 };
 
 

@@ -1,10 +1,11 @@
 #include "missionManager/missionManager.h"
+#include <Utils.h>
 
-missionManager::missionManager(Logger& logger): logger(logger){}
+missionManager::missionManager(Logger& logger): m_logger(logger){}
 
 void missionManager::addMission(Mission const &mission)
 {
-    logger.info("Adding mission ID: " + String(mission.getId()) +
+    m_logger.info("Adding mission ID: " + String(mission.getId()) +
                 " Type: " + Mission::typeToString(mission.getType()));
     missions.push_back(mission);
 }
@@ -39,7 +40,7 @@ void missionManager::endCurrentMission()
     {
         auto *currentMission = getCurrentMission();
         currentMission->setStatus(Mission::Status::FINISHED);
-        logger.info("Ending mission ID: " + String(currentMission->getId()));
+        m_logger.info("Ending mission ID: " + String(currentMission->getId()));
         missions.erase(currentMission);
     }
 }
@@ -51,7 +52,7 @@ void missionManager::endCurrentMission()
 
     auto *currentMission = getCurrentMission();
     currentMission->setStatus(Mission::Status::STARTED);
-    logger.info("Starting mission ID: " + String(currentMission->getId()));
+    m_logger.info("Starting mission ID: " + String(currentMission->getId()));
     return currentMission;
 }
 
@@ -88,4 +89,35 @@ void missionManager::endCurrentMission()
         return Mission::Type::NONE;
 
     return missions.front().getType();
+}
+
+[[nodiscard]] Mission* missionManager::parseMissionMessage(String const &message)
+{
+    // message format: "{ID};{TYPE_INT};{STATUS_INT};{OPTION_INT};{TARGET_X_FLOAT};{TARGET_Y_FLOAT};{TARGET_THETA_FLOAT}"
+    auto parts = std::vector<String>();
+    int start = 0;
+    for (size_t i = 0; i < message.length(); ++i)
+    {
+        if (message.charAt(i) == ';')
+        {
+            parts.push_back(message.substring(start, i));
+            start = i + 1;
+        }
+    }
+    parts.push_back(message.substring(start));
+    if (parts.size() != 7)
+    {
+        m_logger.error("Invalid mission message format: " + message);
+        return nullptr;
+    }
+    int id = parts[0].toInt();
+    Mission::Type type = static_cast<Mission::Type>(parts[1].toInt());
+    Mission::Status status = static_cast<Mission::Status>(parts[2].toInt());
+    Mission::Options options = static_cast<Mission::Options>(parts[3].toInt());
+    float target_x = parts[4].toFloat();
+    float target_y = parts[5].toFloat();
+    float target_theta = parts[6].toFloat();
+    Mission* mission = new Mission(id, type, options, target_x, target_y, target_theta);
+    mission->setStatus(status);
+    return mission;
 }
