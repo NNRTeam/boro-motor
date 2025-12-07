@@ -14,6 +14,9 @@ void I2CClient::begin() {
 }
 
 void I2CClient::receiveData(int length) {
+    if (instanceWrapper == nullptr) {
+        return; // Safety check
+    }
     String receivedData = "";
     char c;
     while (Wire.available()) {
@@ -42,6 +45,9 @@ void I2CClient::receiveData(int length) {
 }
 
 void I2CClient::dataRequested() {
+    if (instanceWrapper == nullptr) {
+        return; // Safety check
+    }
     if (instanceWrapper->m_lastCommand == I2CCommands::ODOM)
     {
         float const x = instanceWrapper->m_robot->getX();
