@@ -42,6 +42,7 @@ float HallSensor::getAngle(){
         return utils::normalizeAngle(2*PI-this->readSPI(ANGL_RESULT, 0x00, 0x00, 0x00)/16.0*2.*PI/360.0);
     }
     float a = this->readSPI(ANGL_RESULT, 0x00, 0x00, 0x00)/16.0*2.*PI/360.0;
+    Serial.println(a*360.0/(2.*PI));
     return utils::normalizeAngle(a);
 }
 

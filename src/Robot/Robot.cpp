@@ -7,6 +7,8 @@ Robot* Robot::instance = nullptr;
 
 Robot::Robot(Logger logger, missionManager *missionManager) : m_logger(logger), m_missionManager(missionManager)
 {
+    pinMode(config::M_EN_PIN, OUTPUT);
+    digitalWrite(config::M_EN_PIN, LOW); // free motors
     if (config::MOTOR_ODOM_ONLY) {
         motor_left = new Motor(config::M1_DIR_PIN,
                                 config::M1_STEP_PIN,
@@ -41,16 +43,7 @@ Robot::Robot(Logger logger, missionManager *missionManager) : m_logger(logger), 
 }
 
 void Robot::run() {
-
-    bool hasActiveMission = m_missionManager->hasActiveMissions();
-    if (!hasActiveMission && m_missionManager->hasMissions())
-    {
-        m_missionManager->startNextMission();
-        hasActiveMission = m_missionManager->hasActiveMissions();
-    }
-    if (hasActiveMission)
-        Control();
-
+    Control();
     motor_left->run();
     motor_right->run();
 }
@@ -61,32 +54,36 @@ void Robot::Control()
     if (currentTime - m_lastControlTime >= 1e6/config::CONTROL_LOOP_FREQUENCY_HZ) {
         if (!config::MOTOR_ODOM_ONLY)
             updateOdometry();
-        checkMissionArrived();
-        Mission* CurrentMission = m_missionManager->getCurrentMission();
-        if (CurrentMission == nullptr) {
-            stop();
-            return;
-        }
-        else if (CurrentMission->isActive() == false) {
-            m_missionManager->startNextMission();
-        }
-
-        if (CurrentMission->getType() == Mission::Type::GO)
-            samsonUpdateMotors();
-        else if (CurrentMission->getType() == Mission::Type::TURN)
-            rotationUpdateMotors();
-        else if (CurrentMission->getType() == Mission::Type::STOP || CurrentMission->getType() == Mission::Type::WAIT)
-            stop();
-        m_lastControlTime = currentTime;
-
-        if (config::MOTOR_ODOM_ONLY)
+        bool hasActiveMission = m_missionManager->hasActiveMissions();
+        if (!hasActiveMission && m_missionManager->hasMissions())
         {
-            m_lastLinearSpeed = m_linearSpeedMotor;
-            m_lastAngularSpeed = m_angularSpeedMotor;
+            m_missionManager->startNextMission();
+            hasActiveMission = m_missionManager->hasActiveMissions();
         }
+        if (hasActiveMission)
+        {
+            checkMissionArrived();
+            Mission* CurrentMission = m_missionManager->getCurrentMission();
+            if (CurrentMission == nullptr) {
+                stop();
+                m_lastControlTime = currentTime;
+                return;
+            }
+            else if (CurrentMission->isActive() == false) {
+                m_missionManager->startNextMission();
+            }
 
-        m_logger.debug("Robot Position - X: " + String(getX(), 4) + " m, Y: " + String(getY(), 4) + " m, Theta: " + String(getTheta(), 4) + " rad");
-        m_logger.debug("Robot Speed - Linear: " + String(getLinearSpeed(), 4) + " m/s, Angular: " + String(getAngularSpeed(), 4) + " rad/s");
+            if (CurrentMission->getType() == Mission::Type::GO)
+                samsonUpdateMotors();
+            else if (CurrentMission->getType() == Mission::Type::TURN)
+                rotationUpdateMotors();
+            else if (CurrentMission->getType() == Mission::Type::STOP || CurrentMission->getType() == Mission::Type::WAIT)
+                stop();
+            m_lastControlTime = currentTime;
+
+            m_logger.debug("Robot Position - X: " + String(getX(), 4) + " m, Y: " + String(getY(), 4) + " m, Theta: " + String(getTheta(), 4) + " rad");
+            m_logger.debug("Robot Speed - Linear: " + String(getLinearSpeed(), 4) + " m/s, Angular: " + String(getAngularSpeed(), 4) + " rad/s");
+        }
     }
 }
 
@@ -94,6 +91,9 @@ void Robot::updateOdometry() {
     unsigned int dt1, dt2, t;
     double right_speed = this->motor_right->getFeedbackSpeed(&dt1, &t);
     double left_speed = this->motor_left->getFeedbackSpeed(&dt2, &t);
+
+    Serial.println(right_speed);
+    Serial.println(left_speed);
 
     m_dt = (dt1+dt2)/2;
     m_t = t;
@@ -146,11 +146,25 @@ void Robot::samsonUpdateMotors()
         theta_error = (getTheta() + M_PI) - angle_cible;
     theta_error = utils::normalizeAngle(theta_error);
 
-    float omega = 0.0;
+    // Calculer la vitesse angulaire désirée avec un gain proportionnel
+    float const kp_angular = 2.5f; // Gain proportionnel pour la correction angulaire
+    float omega_desired = kp_angular * theta_error;
+
+    // Limiter la vitesse angulaire désirée
     if (forward) {
-        omega = utils::getMin(utils::getMax(theta_error, -config::MAX_ANGULAR_VELOCITY_RAD_S), config::MAX_ANGULAR_VELOCITY_RAD_S);
+        omega_desired = utils::getMin(utils::getMax(omega_desired, -config::MAX_ANGULAR_VELOCITY_RAD_S), config::MAX_ANGULAR_VELOCITY_RAD_S);
     } else {
-        omega = utils::getMax(utils::getMin(-theta_error, config::MAX_ANGULAR_VELOCITY_RAD_S), -config::MAX_ANGULAR_VELOCITY_RAD_S);
+        omega_desired = utils::getMax(utils::getMin(omega_desired, config::MAX_ANGULAR_VELOCITY_RAD_S), -config::MAX_ANGULAR_VELOCITY_RAD_S);
+    }
+
+    // Lisser l'accélération angulaire
+    float omega = m_angularSpeedMotor;
+    float omega_diff = omega_desired - omega;
+    float max_omega_change = config::ANGULAR_ACCELERATION_RAD_S2 * (m_dt / (float)1e6);
+    if (abs(omega_diff) > max_omega_change) {
+        omega += utils::sign(omega_diff) * max_omega_change;
+    } else {
+        omega = omega_desired;
     }
 
     float v_max;
@@ -161,12 +175,29 @@ void Robot::samsonUpdateMotors()
         v_max = config::MAX_LINEAR_VELOCITY_M_S;
     }
     float v;
+    float accel_step = config::LINEAR_ACCELERATION_M_S2 * (m_dt / (float)1e6);
     if (forward) {
-        v = m_linearSpeedMotor + config::LINEAR_ACCELERATION_M_S2 * (m_dt / (float)1e6);
-        v = utils::getMin(utils::getMax(v, 0.0f), v_max);
+        // Accélération progressive vers v_max
+        if (m_linearSpeedMotor < v_max) {
+            v = m_linearSpeedMotor + accel_step;
+            v = utils::getMin(v, v_max);
+        } else {
+            // Décélération progressive si v_max a diminué
+            v = m_linearSpeedMotor - accel_step;
+            v = utils::getMax(v, v_max);
+        }
+        v = utils::getMax(v, 0.0f);
     } else {
-        v = m_linearSpeedMotor - config::LINEAR_ACCELERATION_M_S2 * (m_dt / (float)1e6);
-        v = utils::getMax(utils::getMin(v, 0.0f), -v_max); // Limite à -v_max pour le recul
+        // Accélération progressive vers -v_max (recul)
+        if (abs(m_linearSpeedMotor) < v_max) {
+            v = m_linearSpeedMotor - accel_step;
+            v = utils::getMax(v, -v_max);
+        } else {
+            // Décélération progressive si v_max a diminué
+            v = m_linearSpeedMotor + accel_step;
+            v = utils::getMin(v, -v_max);
+        }
+        v = utils::getMin(v, 0.0f);
     }
     if (distance < config::GO_MISSION_TOLERANCE_M/2.0f) {
         v = 0.0;
@@ -208,6 +239,10 @@ void Robot::stop()
 {
     motor_left->stop();
     motor_right->stop();
+    m_linearSpeedMotor = 0.0;
+    m_angularSpeedMotor = 0.0;
+    m_lastAngularSpeed = 0.0;
+    m_lastLinearSpeed = 0.0;
 }
 
 bool Robot::checkMissionArrived()
@@ -246,6 +281,7 @@ void Robot::leftMotorStepNotify(bool forward)
     float const robot_angle_change = distance_motor / config::M_WHEEL_BASE_MM * 1000.0; // in rad
     float const avg_distance = distance_motor/2.0f; // in m
     instance->m_motorTheta -= robot_angle_change; // in rad
+    instance->m_motorTheta = utils::normalizeAngle(instance->m_motorTheta); // Normaliser entre -π et π
     instance->m_motorX += avg_distance * cos(instance->m_motorTheta); // in m
     instance->m_motorY += avg_distance * sin(instance->m_motorTheta); // in m
 }
@@ -259,6 +295,7 @@ void Robot::rightMotorStepNotify(bool forward)
     float const robot_angle_change = distance_motor / config::M_WHEEL_BASE_MM * 1000.0; // in rad
     float const avg_distance = distance_motor/2.0f; // in m
     instance->m_motorTheta += robot_angle_change; // in rad
+    instance->m_motorTheta = utils::normalizeAngle(instance->m_motorTheta); // Normaliser entre -π et π
     instance->m_motorX += avg_distance * cos(instance->m_motorTheta); // in m
     instance->m_motorY += avg_distance * sin(instance->m_motorTheta); // in m
 }

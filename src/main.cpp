@@ -6,10 +6,9 @@
 SystemManager systemManager;
 
 void setup() {
-    delay(5000);
     Serial.begin(config::SERIAL_BAUDRATE);
+    SPI.begin();
     systemManager.initialize(Logger::Level::INFO);
-    delay(1000);
     //systemManager.m_missionManager->addFakeMissionForTest();
 }
 
