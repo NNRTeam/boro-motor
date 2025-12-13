@@ -6,6 +6,8 @@
 #include "Robot/Motor.h"
 #include <Config.h>
 
+#define M_PI 3.14159265358979323846
+
 unsigned int calculerTempsEntreSteps(
     double vitesse_angulaire_rad_s,
     int steps_moteur,
@@ -20,10 +22,11 @@ unsigned int calculerTempsEntreSteps(
 }
 
 
-Motor::Motor(int dirPin, int stepPin, int sensorCS, bool invertSensor, double wheelPerimeter, void (*stepCallback)())
+Motor::Motor(int dirPin, int stepPin, int sensorCS, bool invertSensor, double wheelPerimeter, void (*stepCallback)(bool forward))
     : m_stepCallback(stepCallback), PIN_DIR(dirPin), PIN_STEP(stepPin), m_WheelPerimeter(wheelPerimeter), m_is_sensor_inverted(invertSensor)
 {
-    m_sensor = new HallSensor(sensorCS, invertSensor);
+    if (sensorCS != -1)
+        m_sensor = new HallSensor(sensorCS, invertSensor);
     pinMode(PIN_DIR, OUTPUT);
     pinMode(PIN_STEP, OUTPUT);
 }
@@ -33,16 +36,21 @@ void Motor::run()
     if(m_speed == 0.0)
         return;
     unsigned long long int currentTime = micros();
-    unsigned int interStepTime = calculerTempsEntreSteps(m_speed,
+    unsigned int interStepTime = calculerTempsEntreSteps(abs(m_speed),
                                                         config::STEP_PER_REVOLUTION,
                                                         config::MICROSTEPS);
     if (currentTime - m_lastStepTime >= interStepTime)
     {
         if (m_speed > 0)
+        {
             stepFW();
-
+            m_stepCallback(!m_is_sensor_inverted);
+        }
         else if (m_speed < 0)
+        {
             stepBW();
+            m_stepCallback(m_is_sensor_inverted);
+        }
 
         m_lastStepTime = currentTime;
     }
@@ -51,7 +59,8 @@ void Motor::run()
 
 void Motor::setLinearSpeed(float speed)
 {
-    setSpeed(speed/(m_WheelPerimeter/(2*PI)));
+    float speed_rad_s = speed/(m_WheelPerimeter/(2*PI)) * ( m_is_sensor_inverted ? -1 : 1);
+    setSpeed(speed_rad_s);
 }
 
 void Motor::setSpeed(float speed)

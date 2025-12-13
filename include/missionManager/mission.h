@@ -55,7 +55,16 @@ class Mission
 
         [[nodiscard]] Status getStatus() const { return status; }
 
-        void setStatus(Status newStatus) { status = newStatus; }
+        void sendMisionUpdate()
+        {
+            String d = "M" + String(getId()) + ";" + String(static_cast<int>(getStatus()))+"F";
+            Serial.println(d);
+        }
+
+        void setStatus(Status newStatus) {
+            status = newStatus;
+            sendMisionUpdate();
+        }
 
         [[nodiscard]] Options getOptions() const { return options; }
 
@@ -68,6 +77,8 @@ class Mission
         [[nodiscard]] bool isActive() const { return status == Status::STARTED; }
 
         [[nodiscard]] bool isForward() const { return direction == Direction::FORWARD; }
+
+        bool operator==(const Mission& other) const { return this->id == other.id; }
 
     static String typeToString(Mission::Type type) {
         switch (type) {

@@ -1,12 +1,33 @@
 #include "missionManager/missionManager.h"
 #include <Utils.h>
+#include <algorithm>
 
-missionManager::missionManager(Logger& logger): m_logger(logger){}
+missionManager::missionManager(Logger& logger): m_logger(logger){
+}
 
 void missionManager::addMission(Mission const &mission)
 {
     m_logger.info("Adding mission ID: " + String(mission.getId()) +
                 " Type: " + Mission::typeToString(mission.getType()));
+    if (mission.getType() == Mission::Type::STOP)
+    {
+        m_logger.info("STOP mission received. Clearing all missions.");
+        clearMissions();
+        return;
+    }
+    else if (mission.getType() == Mission::Type::RESUME)
+    {
+        if (getCurrentMission()->getType() == Mission::Type::WAIT)
+        {
+            endCurrentMission();
+            startNextMission();
+        }
+        else
+        {
+            m_logger.warn("RESUME mission received but current mission is not WAIT.");
+        }
+        return;
+    }
     missions.push_back(mission);
 }
 
@@ -20,6 +41,10 @@ void missionManager::clearMissions()
     auto it = std::find(missions.begin(), missions.end(), mission);
     if (it != missions.end())
     {
+        for (auto &mission: missions)
+        {
+            mission.setStatus(Mission::Status::CANCELED);
+        }
         missions.clear();
         return true;
     }
@@ -30,7 +55,6 @@ void missionManager::clearMissions()
 {
     if (missions.empty())
         return nullptr;
-
     return &missions.front();
 }
 
@@ -41,7 +65,10 @@ void missionManager::endCurrentMission()
         auto *currentMission = getCurrentMission();
         currentMission->setStatus(Mission::Status::FINISHED);
         m_logger.info("Ending mission ID: " + String(currentMission->getId()));
-        missions.erase(currentMission);
+        auto it = std::find(missions.begin(), missions.end(), *currentMission);
+        if (it != missions.end()) {
+            missions.erase(it);
+        }
     }
 }
 
@@ -80,7 +107,8 @@ Mission* missionManager::startNextMission()
 
 [[nodiscard]] bool missionManager::hasActiveMissions()
 {
-    return !missions.empty() && getCurrentMission()->isActive();
+    bool const hasActiveMissions = !missions.empty() && getCurrentMission()->isActive();
+    return hasActiveMissions;
 }
 
 [[nodiscard]] Mission::Type missionManager::getCurrentMissionType() const
@@ -125,8 +153,37 @@ Mission* missionManager::startNextMission()
 
 void missionManager::addFakeMissionForTest()
 {
-    Mission mission1(1, Mission::Type::GO, Mission::Options::NONE, Mission::Direction::FORWARD, 1.0f, 0.0f, 0.0f);
+    Mission mission1(1, Mission::Type::GO, Mission::Options::NONE, Mission::Direction::FORWARD, 0.5f, 0.0f, 0.0f);
     addMission(mission1);
     Mission mission2(2, Mission::Type::TURN, Mission::Options::NONE, Mission::Direction::FORWARD, 0.0f, 0.0f, 3.14159f/2.0f);
     addMission(mission2);
+    Mission mission3(3, Mission::Type::GO, Mission::Options::NONE, Mission::Direction::FORWARD, 0.5f, 0.5f, 0.0f);
+    addMission(mission3);
+    Mission mission4(4, Mission::Type::TURN, Mission::Options::NONE, Mission::Direction::FORWARD, 0.0f, 0.0f, 3.14159f);
+    addMission(mission4);
+    Mission mission5(5, Mission::Type::GO, Mission::Options::NONE, Mission::Direction::FORWARD, 0.0f, 0.5f, 0.0f);
+    addMission(mission5);
+    Mission mission6(6, Mission::Type::TURN, Mission::Options::NONE, Mission::Direction::FORWARD, 0.0f, 0.0f, -3.14159f/2.0f);
+    addMission(mission6);
+    Mission mission7(7, Mission::Type::GO, Mission::Options::NONE, Mission::Direction::FORWARD, 0.0f, 0.0f, 0.0f);
+    addMission(mission7);
+    Mission mission8(8, Mission::Type::TURN, Mission::Options::NONE, Mission::Direction::FORWARD, 0.0f, 0.0f, 0.0f);
+    addMission(mission8);
+
+    Mission mission11(11, Mission::Type::GO, Mission::Options::NONE, Mission::Direction::FORWARD, 0.5f, 0.0f, 0.0f);
+    addMission(mission11);
+    Mission mission12(12, Mission::Type::TURN, Mission::Options::NONE, Mission::Direction::FORWARD, 0.0f, 0.0f, 3.14159f/2.0f);
+    addMission(mission12);
+    Mission mission13(13, Mission::Type::GO, Mission::Options::NONE, Mission::Direction::FORWARD, 0.5f, 0.5f, 0.0f);
+    addMission(mission13);
+    Mission mission14(14, Mission::Type::TURN, Mission::Options::NONE, Mission::Direction::FORWARD, 0.0f, 0.0f, 3.14159f);
+    addMission(mission14);
+    Mission mission15(15, Mission::Type::GO, Mission::Options::NONE, Mission::Direction::FORWARD, 0.0f, 0.5f, 0.0f);
+    addMission(mission15);
+    Mission mission16(16, Mission::Type::TURN, Mission::Options::NONE, Mission::Direction::FORWARD, 0.0f, 0.0f, -3.14159f/2.0f);
+    addMission(mission16);
+    Mission mission17(17, Mission::Type::GO, Mission::Options::NONE, Mission::Direction::FORWARD, 0.0f, 0.0f, 0.0f);
+    addMission(mission17);
+    Mission mission18(18, Mission::Type::TURN, Mission::Options::NONE, Mission::Direction::FORWARD, 0.0f, 0.0f, 0.0f);
+    addMission(mission18);
 }

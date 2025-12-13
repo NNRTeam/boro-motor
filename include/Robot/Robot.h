@@ -10,15 +10,17 @@
 class Robot
 {
     public:
-        Robot(Logger logger);
+        Robot(Logger logger, missionManager* missionManager);
 
         void run();
         [[nodiscard]] float getX() const { if (config::MOTOR_ODOM_ONLY) return m_motorX; else return x; }
         [[nodiscard]] float getY() const { if (config::MOTOR_ODOM_ONLY) return m_motorY; else return y; }
         [[nodiscard]] float getTheta() const { if (config::MOTOR_ODOM_ONLY) return m_motorTheta; else return theta; }
+        [[nodiscard]] float getLinearSpeed() const { if (config::MOTOR_ODOM_ONLY) return m_linearSpeedMotor; else return m_linearSpeed; }
+        [[nodiscard]] float getAngularSpeed() const { if (config::MOTOR_ODOM_ONLY) return m_angularSpeedMotor; else return m_angularSpeed; }
 
-        static void leftMotorStepNotify();
-        static void rightMotorStepNotify();
+        static void leftMotorStepNotify(bool forward);
+        static void rightMotorStepNotify(bool forward);
         static Robot* instance;
 
     protected:
@@ -58,7 +60,7 @@ class Robot
     private:
         unsigned int m_dt1 = 0;
         unsigned int m_dt2 = 0;
-        unsigned int m_dt = 0;
+        unsigned int m_dt = 1e6/config::CONTROL_LOOP_FREQUENCY_HZ;
         unsigned int m_t = 0;
 
 };

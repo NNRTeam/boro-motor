@@ -4,7 +4,7 @@
 namespace config {
 
     bool constexpr TEST = false; // Enable or disable test mode
-    bool constexpr MOTOR_ODOM_ONLY = false; // Enable or disable motor odometry only mode
+    bool constexpr MOTOR_ODOM_ONLY = true; // Enable or disable motor odometry only mode
 
     // HARDWARE CONFIGURATION
 
@@ -19,7 +19,7 @@ namespace config {
     int constexpr OD1_CS_PIN = 10;
     int constexpr OD2_CS_PIN = 9;
 
-    int constexpr MICROSTEPS = 8; // Microsteps for motor driver (1, 2, 4, 8, 16)
+    int constexpr MICROSTEPS = 16; // Microsteps for motor driver (1, 2, 4, 8, 16)
     int constexpr STEP_PER_REVOLUTION = 200; // Steps per revolution for the motor
 
     // MECHANICAL CONFIGURATION
@@ -30,7 +30,7 @@ namespace config {
     float constexpr OD1_WHEEL_DIAMETER_MM = 50.0f; // Odom Wheel diameter in millimeters
     float constexpr OD2_WHEEL_DIAMETER_MM = 50.0f; // Odom Wheel diameter in millimeters
 
-    float constexpr M_WHEEL_BASE_MM = 150.0f;    // Distance between the two motors wheels in millimeters
+    float constexpr M_WHEEL_BASE_MM = 165.0f;    // Distance between the two motors wheels in millimeters
     float constexpr OD_WHEEL_BASE_MM = 200.0f;   // Distance between the two odom wheels in millimeters
 
     // MOTION CONFIGURATION
@@ -38,20 +38,22 @@ namespace config {
     float constexpr GO_MISSION_TOLERANCE_M = 0.03f;        // Tolerance for GO missions in meters
     float constexpr TURN_MISSION_TOLERANCE_RAD = 0.05f;     // Tolerance for TURN missions in radians
 
-    float constexpr MAX_LINEAR_VELOCITY_M_S = 0.4f;    // Maximum linear velocity in metter per second
-    float constexpr MAX_ANGULAR_VELOCITY_RAD_S = 2.0f;    // Maximum angular velocity in radians per second
+    float constexpr MAX_LINEAR_VELOCITY_M_S = 0.6f;    // Maximum linear velocity in metter per second
+    float constexpr MAX_ANGULAR_VELOCITY_RAD_S = 1.7f;    // Maximum angular velocity in radians per second
 
-    float constexpr LINEAR_ACCELERATION_M_S2 = 0.4f;      // Linear acceleration in metter per second squared
-    float constexpr ANGULAR_ACCELERATION_RAD_S2 = 2.0f;     // Angular acceleration in radians per second squared
+    float constexpr LINEAR_ACCELERATION_M_S2 = 0.5f;      // Linear acceleration in metter per second squared
+    float constexpr ANGULAR_ACCELERATION_RAD_S2 = 1.1f;     // Angular acceleration in radians per second squared
 
     // SOFTWARE CONFIGURATION
 
     float constexpr CONTROL_LOOP_FREQUENCY_HZ = 25.0f; // Control loop frequency in Hertz
+    float constexpr ODOM_FREQUENCY_HZ = 10.0f; // Control loop frequency in Hertz
+
 
     unsigned long int constexpr SERIAL_BAUDRATE = 115200; // Serial communication baudrate
-    bool constexpr ENABLE_SERIAL_DEBUG = true; // Enable or disable serial debug messages
+    bool constexpr ENABLE_SERIAL_DEBUG = false; // Enable or disable serial debug messages
 
-    int constexpr I2C_ADD = 0x10; // I2C address for the robot
+    int constexpr I2C_ADD = 0x30; // I2C address for the robot
 
 } // namespace config
 

@@ -6,7 +6,7 @@
 
 #include <Logger/Logger.h>
 #include <missionManager/missionManager.h>
-#include <i2cClient/i2cClient.h>
+#include <SerialClient/SerialClient.h>
 #include <Robot/Robot.h>
 
 class SystemManager
@@ -16,9 +16,8 @@ public:
     {
         m_logger = new Logger(logLevel);
         m_missionManager = new missionManager(*m_logger);
-        m_robot = new Robot(*m_logger);
-        m_i2cClient = new I2CClient(*m_logger, m_missionManager, m_robot);
-        m_i2cClient->begin();
+        m_robot = new Robot(*m_logger, m_missionManager);
+        m_serialClient = new SerialClient(*m_logger, m_missionManager, m_robot);
         if (config::TEST)
             m_missionManager->addFakeMissionForTest();
     }
@@ -26,7 +25,7 @@ public:
     Logger* m_logger = nullptr;
     missionManager* m_missionManager = nullptr;
     Robot* m_robot = nullptr;
-    I2CClient* m_i2cClient = nullptr;
+    SerialClient* m_serialClient = nullptr;
 };
 
 

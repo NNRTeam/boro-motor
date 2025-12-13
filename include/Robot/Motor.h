@@ -7,7 +7,7 @@
 
 class Motor{
     public:
-        Motor(int dirPin, int stepPin, int sensorCS, bool invertSensor, double wheelPerimeter, void (*stepCallback)());
+        Motor(int dirPin, int stepPin, int sensorCS, bool invertSensor, double wheelPerimeter, void (*stepCallback)(bool forward));
         void run();
         void setLinearSpeed(float speed);
         void stop() { m_speed = 0.0; }
@@ -20,7 +20,7 @@ class Motor{
         void stepFW();
         void stepBW();
 
-        void (*m_stepCallback)();
+        void (*m_stepCallback)(bool forward);
         int PIN_DIR;          //Pin de direction
         int PIN_STEP;         //Pin de step
 
