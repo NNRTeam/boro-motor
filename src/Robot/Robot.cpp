@@ -168,7 +168,7 @@ void Robot::samsonUpdateMotors()
     theta_error = utils::normalizeAngle(theta_error);
 
     // Calculer la vitesse angulaire désirée avec un gain proportionnel
-    float const kp_angular = 2.5f; // Gain proportionnel pour la correction angulaire
+    float const kp_angular = 5.0f; // Gain proportionnel pour la correction angulaire
     float omega_desired = kp_angular * theta_error;
 
     // Limiter la vitesse angulaire désirée
@@ -181,13 +181,14 @@ void Robot::samsonUpdateMotors()
     // Lisser l'accélération angulaire
     float omega = m_angularSpeedMotor;
     float omega_diff = omega_desired - omega;
-    float max_omega_change = config::ANGULAR_ACCELERATION_RAD_S2 * (m_dt / (float)1e6);
+    float max_omega_change = config::ANGULAR_ACCELERATION_RAD_S2 * (m_dt / (float)1e6) * 2;
     if (abs(omega_diff) > max_omega_change) {
         omega += utils::sign(omega_diff) * max_omega_change;
     } else {
         omega = omega_desired;
     }
 
+    // Calculer la vitesse maximale cible
     float v_max;
     float const distance_to_slow = config::MAX_LINEAR_VELOCITY_M_S * config::MAX_LINEAR_VELOCITY_M_S / config::LINEAR_ACCELERATION_M_S2 / 2;
     if (distance < distance_to_slow) { // Ralentir à l'approche
@@ -195,35 +196,60 @@ void Robot::samsonUpdateMotors()
     } else {
         v_max = config::MAX_LINEAR_VELOCITY_M_S;
     }
-    float v;
-    float accel_step = config::LINEAR_ACCELERATION_M_S2 * (m_dt / (float)1e6);
+
+    // Calculer l'accélération désirée en fonction de l'écart de vitesse
+    float v_error = v_max - m_linearSpeedMotor;
+    float accel_desired;
+
     if (forward) {
-        // Accélération progressive vers v_max
-        if (m_linearSpeedMotor < v_max) {
-            v = m_linearSpeedMotor + accel_step;
-            v = utils::getMin(v, v_max);
+        if (v_error > 0) {
+            accel_desired = config::LINEAR_ACCELERATION_M_S2;  // Accélérer
+        } else if (v_error < 0) {
+            accel_desired = -config::LINEAR_ACCELERATION_M_S2; // Décélérer
         } else {
-            // Décélération progressive si v_max a diminué
-            v = m_linearSpeedMotor - accel_step;
-            v = utils::getMax(v, v_max);
+            accel_desired = 0.0f; // Maintenir la vitesse
         }
-        v = utils::getMax(v, 0.0f);
     } else {
-        // Accélération progressive vers -v_max (recul)
-        if (abs(m_linearSpeedMotor) < v_max) {
-            v = m_linearSpeedMotor - accel_step;
-            v = utils::getMax(v, -v_max);
+        if (v_error < 0) {
+            accel_desired = -config::LINEAR_ACCELERATION_M_S2; // Accélérer en arrière
+        } else if (v_error > 0) {
+            accel_desired = config::LINEAR_ACCELERATION_M_S2;  // Décélérer
         } else {
-            // Décélération progressive si v_max a diminué
-            v = m_linearSpeedMotor + accel_step;
-            v = utils::getMin(v, -v_max);
+            accel_desired = 0.0f; // Maintenir la vitesse
         }
-        v = utils::getMin(v, 0.0f);
     }
+
+    // Limiter le jerk (variation de l'accélération)
+    float accel_diff = accel_desired - m_currentLinearAccel;
+    float max_jerk_change = config::LINEAR_JERK_M_S3 * (m_dt / (float)1e6);
+    if (abs(accel_diff) > max_jerk_change) {
+        m_currentLinearAccel += utils::sign(accel_diff) * max_jerk_change;
+    } else {
+        m_currentLinearAccel = accel_desired;
+    }
+
+    // Appliquer l'accélération lissée pour calculer la nouvelle vitesse
+    float v = m_linearSpeedMotor + m_currentLinearAccel * (m_dt / (float)1e6);
+
+    // Contraindre la vitesse dans les limites
+    if (forward) {
+        v = utils::getMax(v, 0.0f);
+        v = utils::getMin(v, config::MAX_LINEAR_VELOCITY_M_S);
+    } else {
+        v = utils::getMin(v, 0.0f);
+        v = utils::getMax(v, -config::MAX_LINEAR_VELOCITY_M_S);
+    }
+
+    // Arrêt final proche de la cible
     if (distance < config::GO_MISSION_TOLERANCE_M/2.0f) {
         v = 0.0;
         omega = 0.0;
+        m_currentLinearAccel = 0.0;
     }
+
+    if (distance < 2 * config::GO_MISSION_TOLERANCE_M)
+        omega = 0.0f;
+
     m_linearSpeedMotor = v;
     m_angularSpeedMotor = omega;
     setSpeeds(v, omega);

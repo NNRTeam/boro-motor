@@ -4,7 +4,7 @@
 namespace config {
 
     bool constexpr TEST = false; // Enable or disable test mode
-    bool constexpr MOTOR_ODOM_ONLY = false; // Enable or disable motor odometry only mode
+    bool constexpr MOTOR_ODOM_ONLY = true; // Enable or disable motor odometry only mode
 
     // HARDWARE CONFIGURATION
 
@@ -41,8 +41,10 @@ namespace config {
     float constexpr MAX_LINEAR_VELOCITY_M_S = 0.6f;    // Maximum linear velocity in metter per second
     float constexpr MAX_ANGULAR_VELOCITY_RAD_S = 1.7f;    // Maximum angular velocity in radians per second
 
-    float constexpr LINEAR_ACCELERATION_M_S2 = 1.0f;      // Linear acceleration in metter per second squared
+    float constexpr LINEAR_ACCELERATION_M_S2 = 0.8f;      // Linear acceleration in metter per second squared
     float constexpr ANGULAR_ACCELERATION_RAD_S2 = 2.0f;     // Angular acceleration in radians per second squared
+
+    float constexpr LINEAR_JERK_M_S3 = 1.0f;              // Linear jerk (rate of change of acceleration) in m/s^3
 
     // SOFTWARE CONFIGURATION
 

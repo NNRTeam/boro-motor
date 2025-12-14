@@ -56,6 +56,8 @@ class Robot
         float m_linearSpeedMotor = 0.0; //m/s
         float m_angularSpeedMotor = 0.0; //rad/s
 
+        float m_currentLinearAccel = 0.0; //m/s^2 - accélération actuelle pour limiter le jerk
+
         unsigned long long int m_lastControlTime = 0;
         unsigned long long int m_lastOdomTime = 0;
         unsigned long long int m_lastAssignedMission = 0;
