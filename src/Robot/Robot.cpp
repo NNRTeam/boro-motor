@@ -8,7 +8,7 @@ Robot* Robot::instance = nullptr;
 Robot::Robot(Logger logger, missionManager *missionManager) : m_logger(logger), m_missionManager(missionManager)
 {
     pinMode(config::M_EN_PIN, OUTPUT);
-    digitalWrite(config::M_EN_PIN, LOW); // free motors
+    digitalWrite(config::M_EN_PIN, HIGH); // free motors
     if (config::MOTOR_ODOM_ONLY) {
         motor_left = new Motor(config::M1_DIR_PIN,
                                 config::M1_STEP_PIN,
@@ -48,12 +48,29 @@ void Robot::run() {
     motor_right->run();
 }
 
+void Robot::resetOdometry() {
+    x = 0.0;
+    y = 0.0;
+    theta = 0.0;
+
+    m_motorX = 0.0;
+    m_motorY = 0.0;
+    m_motorTheta = 0.0;
+
+    m_lastLinearSpeed = 0.0;
+    m_lastAngularSpeed = 0.0;
+}
+
 void Robot::Control()
 {
     unsigned long long currentTime = micros();
+
+    if (!config::MOTOR_ODOM_ONLY && currentTime - m_lastOdomTime > 1e6/config::ODOM_MEASURE_FREQUENCY_HZ) {
+        updateOdometry();
+        m_lastOdomTime = currentTime;
+    }
+
     if (currentTime - m_lastControlTime >= 1e6/config::CONTROL_LOOP_FREQUENCY_HZ) {
-        if (!config::MOTOR_ODOM_ONLY)
-            updateOdometry();
         bool hasActiveMission = m_missionManager->hasActiveMissions();
         if (!hasActiveMission && m_missionManager->hasMissions())
         {
@@ -62,6 +79,7 @@ void Robot::Control()
         }
         if (hasActiveMission)
         {
+            digitalWrite(config::M_EN_PIN, LOW);
             checkMissionArrived();
             Mission* CurrentMission = m_missionManager->getCurrentMission();
             if (CurrentMission == nullptr) {
@@ -84,6 +102,9 @@ void Robot::Control()
             m_logger.debug("Robot Position - X: " + String(getX(), 4) + " m, Y: " + String(getY(), 4) + " m, Theta: " + String(getTheta(), 4) + " rad");
             m_logger.debug("Robot Speed - Linear: " + String(getLinearSpeed(), 4) + " m/s, Angular: " + String(getAngularSpeed(), 4) + " rad/s");
         }
+        else if (currentTime - m_lastControlTime > 10*1e6) {
+            digitalWrite(config::M_EN_PIN, HIGH); // free motors
+        }
     }
 }
 
@@ -92,14 +113,14 @@ void Robot::updateOdometry() {
     double right_speed = this->motor_right->getFeedbackSpeed(&dt1, &t);
     double left_speed = this->motor_left->getFeedbackSpeed(&dt2, &t);
 
-    Serial.println(right_speed);
-    Serial.println(left_speed);
-
     m_dt = (dt1+dt2)/2;
     m_t = t;
 
     m_linearSpeed = (left_speed + right_speed)/2;
-    m_angularSpeed = (right_speed-left_speed)/config::OD_WHEEL_BASE_MM;
+    m_angularSpeed = (right_speed-left_speed)/(config::OD_WHEEL_BASE_MM/1000.0);
+
+    // Serial.print("Left speed: " + String(left_speed) + " m/s, Right speed: " + String(right_speed) + " m/s ");
+    // Serial.println("=> Linear speed: " + String(m_linearSpeed) + " m/s, Angular speed: " + String(m_angularSpeed) + " rad/s");
 
     // integration selon la methode des trapezes
     float angular_speed = (0.5*m_angularSpeed+0.5*m_lastAngularSpeed);
@@ -210,7 +231,13 @@ void Robot::samsonUpdateMotors()
 
 void Robot::rotationUpdateMotors()
 {
-    float const target_theta = m_missionManager->getCurrentMission()->getTargetTheta();
+    float target_theta = m_missionManager->getCurrentMission()->getTargetTheta();
+    bool const forward = m_missionManager->getCurrentMission()->isForward();
+
+    if (!forward) {
+        target_theta = utils::normalizeAngle(target_theta + M_PI);
+    }
+
     float angle_diff = utils::normalizeAngle(target_theta - getTheta());
     float omega_desired;
     if (abs(angle_diff) < 0.01) { // Si l'angle est déjà atteint, arrêter le robot

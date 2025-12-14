@@ -16,6 +16,7 @@ public:
 
     void run();
     void receiveData();
+    void enterDFUMode();
     void sendData();
     static SerialClient* instanceWrapper;
 private:

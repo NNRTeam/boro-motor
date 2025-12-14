@@ -47,6 +47,7 @@ namespace config {
     // SOFTWARE CONFIGURATION
 
     float constexpr CONTROL_LOOP_FREQUENCY_HZ = 25.0f; // Control loop frequency in Hertz
+    float constexpr ODOM_MEASURE_FREQUENCY_HZ = 15.0f; // Odometry measurement frequency in Hertz
     float constexpr ODOM_FREQUENCY_HZ = 10.0f; // Control loop frequency in Hertz
 
 

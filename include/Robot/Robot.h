@@ -13,12 +13,12 @@ class Robot
         Robot(Logger logger, missionManager* missionManager);
 
         void run();
+        void resetOdometry();
         [[nodiscard]] float getX() const { if (config::MOTOR_ODOM_ONLY) return m_motorX; else return x; }
         [[nodiscard]] float getY() const { if (config::MOTOR_ODOM_ONLY) return m_motorY; else return y; }
         [[nodiscard]] float getTheta() const { if (config::MOTOR_ODOM_ONLY) return m_motorTheta; else return theta; }
         [[nodiscard]] float getLinearSpeed() const { if (config::MOTOR_ODOM_ONLY) return m_linearSpeedMotor; else return m_linearSpeed; }
         [[nodiscard]] float getAngularSpeed() const { if (config::MOTOR_ODOM_ONLY) return m_angularSpeedMotor; else return m_angularSpeed; }
-
         static void leftMotorStepNotify(bool forward);
         static void rightMotorStepNotify(bool forward);
         static Robot* instance;
@@ -57,6 +57,8 @@ class Robot
         float m_angularSpeedMotor = 0.0; //rad/s
 
         unsigned long long int m_lastControlTime = 0;
+        unsigned long long int m_lastOdomTime = 0;
+        unsigned long long int m_lastAssignedMission = 0;
     private:
         unsigned int m_dt1 = 0;
         unsigned int m_dt2 = 0;

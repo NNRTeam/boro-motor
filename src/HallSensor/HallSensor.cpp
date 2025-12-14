@@ -38,11 +38,12 @@ double HallSensor::getSpeed(unsigned int *dt, unsigned int *t){
 }
 
 float HallSensor::getAngle(){
-    if (this->invert){
-        return utils::normalizeAngle(2*PI-this->readSPI(ANGL_RESULT, 0x00, 0x00, 0x00)/16.0*2.*PI/360.0);
-    }
-    float a = this->readSPI(ANGL_RESULT, 0x00, 0x00, 0x00)/16.0*2.*PI/360.0;
-    Serial.println(a*360.0/(2.*PI));
+    float a = 0;
+    if (this->invert)
+        a = 2*PI-this->readSPI(ANGL_RESULT, 0x00, 0x00, 0x00)/16.0*2.*PI/360.0;
+    else
+        a = this->readSPI(ANGL_RESULT, 0x00, 0x00, 0x00)/16.0*2.*PI/360.0;
+    //Serial.println("Angle read: " + String(a));
     return utils::normalizeAngle(a);
 }
 
@@ -99,6 +100,7 @@ int16_t HallSensor::readSPI(int8_t address, int8_t data1, int8_t data2, int8_t c
     data |= SPI.transfer(data2);
     //SPI.transfer(comande);    // this is not needed
     digitalWrite(this->pinCS, HIGH);
+    //Serial.println("Data read: " + String(float(data)));
     return data;
 }
 

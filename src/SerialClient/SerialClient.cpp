@@ -28,8 +28,41 @@ void SerialClient::receiveData() {
         receivedData += c;
     }
 
-    Mission* mission = m_missionManager->parseMissionMessage(receivedData);
-    m_missionManager->addMission(*mission);
+    if (receivedData[0] == 'R')
+    {
+        m_robot->resetOdometry();
+    }
+    else if (receivedData[0] == 'D')
+    {
+        enterDFUMode();
+    }
+    else
+    {
+        Mission* mission = m_missionManager->parseMissionMessage(receivedData);
+        m_missionManager->addMission(*mission);
+    }
+}
+
+void SerialClient::enterDFUMode() {
+    // Pour Arduino Nano R4 (Renesas RA4M1):
+    // Utiliser l'USB pour se déconnecter et forcer un reset bootloader
+
+    Serial.end();  // Fermer le port série
+    Serial.flush();
+    delay(10);
+
+    // Écrire le magic word pour le bootloader Arduino dans la RAM backup
+    volatile uint32_t *const bootKeyAddr = (volatile uint32_t *)0x20007FFC;
+    *bootKeyAddr = 0x07738135;  // Magic key Arduino pour double reset
+
+    // Désactiver toutes les interruptions et déclencher un reset logiciel
+    __disable_irq();
+    NVIC_SystemReset();
+
+    // Ne devrait jamais arriver ici
+    while (1) {
+        __WFI();  // Wait For Interrupt
+    }
 }
 
 void writeUint32(uint32_t value) {
