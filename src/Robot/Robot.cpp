@@ -76,6 +76,13 @@ void Robot::Control()
         {
             m_missionManager->startNextMission();
             hasActiveMission = m_missionManager->hasActiveMissions();
+            if (hasActiveMission && m_missionManager->getCurrentMission()->getType() == Mission::Type::GO) {
+                Mission* CurrentMission = m_missionManager->getCurrentMission();
+                float const dx = m_missionManager->getCurrentMission()->getTargetX() - getX();
+                float const dy = m_missionManager->getCurrentMission()->getTargetY() - getY();
+                float const angle_cible = atan2(dy, dx);
+                CurrentMission->setThetaGoTo(angle_cible);
+            }
         }
         if (hasActiveMission)
         {
@@ -89,6 +96,10 @@ void Robot::Control()
             }
             else if (CurrentMission->isActive() == false) {
                 m_missionManager->startNextMission();
+                float const dx = m_missionManager->getCurrentMission()->getTargetX() - getX();
+                float const dy = m_missionManager->getCurrentMission()->getTargetY() - getY();
+                float const angle_cible = atan2(dy, dx);
+                m_missionManager->getCurrentMission()->setThetaGoTo(angle_cible);
             }
 
             if (CurrentMission->getType() == Mission::Type::GO)
@@ -156,9 +167,19 @@ void Robot::samsonUpdateMotors()
     float const dx = m_missionManager->getCurrentMission()->getTargetX() - getX();
     float const dy = m_missionManager->getCurrentMission()->getTargetY() - getY();
     float const distance = sqrt(dx * dx + dy * dy);
-    float const angle_cible = atan2(dy, dx);
-
+    //float const angle_cible = atan2(dy, dx);
+    float const angle_cible =  m_missionManager->getCurrentMission()->getTargetTheta();
     bool const forward = m_missionManager->getCurrentMission()->isForward();
+
+    // Calculer la distance latérale (perpendiculaire) à la droite de référence
+    // La droite est définie par le point (targetX, targetY) et l'angle angle_cible
+    // Distance signée perpendiculaire = (x - targetX)*sin(angle_cible) - (y - targetY)*cos(angle_cible)
+    float const lateral_error = (getX() - m_missionManager->getCurrentMission()->getTargetX()) * sin(angle_cible)
+                               - (getY() - m_missionManager->getCurrentMission()->getTargetY()) * cos(angle_cible);
+
+    // Calculer la distance longitudinale (le long de la droite de référence)
+    float const longitudinal_distance = (getX() - m_missionManager->getCurrentMission()->getTargetX()) * cos(angle_cible)
+                                       + (getY() - m_missionManager->getCurrentMission()->getTargetY()) * sin(angle_cible);
 
     float theta_error;
     if (forward)
@@ -167,9 +188,15 @@ void Robot::samsonUpdateMotors()
         theta_error = (getTheta() + M_PI) - angle_cible;
     theta_error = utils::normalizeAngle(theta_error);
 
-    // Calculer la vitesse angulaire désirée avec un gain proportionnel
-    float const kp_angular = 5.0f; // Gain proportionnel pour la correction angulaire
-    float omega_desired = kp_angular * theta_error;
+    // Contrôleur Samson amélioré avec prise en compte de l'erreur latérale
+    float const kp_angular = 5.0f;     // Gain proportionnel pour la correction angulaire
+    float const kp_lateral = 2.0f;     // Gain proportionnel pour la correction latérale
+    float const k_damping = 0.5f;      // Gain d'amortissement pour stabiliser l'approche
+
+    // Vitesse angulaire désirée : correction angulaire + correction latérale + amortissement
+    float omega_desired = kp_angular * theta_error
+                        - kp_lateral * lateral_error
+                        - k_damping * lateral_error * abs(longitudinal_distance) / (distance + 0.01f);
 
     // Limiter la vitesse angulaire désirée
     if (forward) {
@@ -324,6 +351,21 @@ bool Robot::checkMissionArrived()
     return false;
 }
 
+void Robot::parseOdometryData(String const &message)
+{
+    // Message format: "Ox.x;y.y;theta.t" or "Ox.x;y.y;theta.tF"
+    String data = message.substring(1); // Remove 'O' prefix
+    int firstSemicolon = data.indexOf(';');
+    int secondSemicolon = data.indexOf(';', firstSemicolon + 1);
+
+    m_motorX = data.substring(0, firstSemicolon).toFloat();
+    m_motorY = data.substring(firstSemicolon + 1, secondSemicolon).toFloat();
+    m_motorTheta = utils::normalizeAngle(data.substring(secondSemicolon + 1).toFloat());
+
+    x = m_motorX;
+    y = m_motorY;
+    theta = m_motorTheta;
+}
 
 void Robot::leftMotorStepNotify(bool forward)
 {

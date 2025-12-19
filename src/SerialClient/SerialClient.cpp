@@ -32,6 +32,10 @@ void SerialClient::receiveData() {
     {
         m_robot->resetOdometry();
     }
+    else if (receivedData[0] == 'O')
+    {
+        m_robot->parseOdometryData(receivedData);
+    }
     else if (receivedData[0] == 'D')
     {
         enterDFUMode();

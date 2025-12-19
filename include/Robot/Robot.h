@@ -14,6 +14,7 @@ class Robot
 
         void run();
         void resetOdometry();
+        void parseOdometryData(String const &message);
         [[nodiscard]] float getX() const { if (config::MOTOR_ODOM_ONLY) return m_motorX; else return x; }
         [[nodiscard]] float getY() const { if (config::MOTOR_ODOM_ONLY) return m_motorY; else return y; }
         [[nodiscard]] float getTheta() const { if (config::MOTOR_ODOM_ONLY) return m_motorTheta; else return theta; }

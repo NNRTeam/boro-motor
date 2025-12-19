@@ -92,6 +92,7 @@ class Mission
         }
     }
 
+    void setThetaGoTo(float theta) { if(type == Mission::Type::GO) target_theta = theta; }
 
     protected:
         int id;
