@@ -215,17 +215,27 @@ void Robot::samsonUpdateMotors()
         omega = omega_desired;
     }
 
-    // Calculer la vitesse maximale cible
-    float v_max;
-    float const distance_to_slow = config::MAX_LINEAR_VELOCITY_M_S * config::MAX_LINEAR_VELOCITY_M_S / config::LINEAR_ACCELERATION_M_S2 / 2;
-    if (distance < distance_to_slow) { // Ralentir à l'approche
-        v_max = config::MAX_LINEAR_VELOCITY_M_S * (distance / distance_to_slow);
-    } else {
-        v_max = config::MAX_LINEAR_VELOCITY_M_S;
-    }
+    // Distance restante utile le long de la trajectoire.
+    // `longitudinal_distance` est négative tant que la cible est devant en marche avant.
+    float remaining_distance = forward
+        ? utils::getMax(-longitudinal_distance, 0.0f)
+        : utils::getMax(longitudinal_distance, 0.0f);
+
+    // Vitesse maximale autorisée pour pouvoir s'arrêter à temps:
+    // v² = 2 * a * d  =>  v = sqrt(2ad)
+    float const braking_distance = utils::getMax(remaining_distance - config::GO_MISSION_TOLERANCE_M, 0.0f);
+    float v_max = sqrt(2.0f * config::LINEAR_ACCELERATION_M_S2 * braking_distance);
+    v_max = utils::getMin(v_max, config::MAX_LINEAR_VELOCITY_M_S);
+
+    // Réduire aussi la vitesse si l'erreur latérale ou angulaire est importante,
+    // afin d'éviter d'arriver trop vite de travers.
+    float const heading_slowdown = 1.0f / (1.0f + 2.0f * abs(theta_error));
+    float const lateral_slowdown = 1.0f / (1.0f + 4.0f * abs(lateral_error));
+    v_max *= utils::getMax(0.2f, heading_slowdown * lateral_slowdown);
 
     // Calculer l'accélération désirée en fonction de l'écart de vitesse
-    float v_error = v_max - m_linearSpeedMotor;
+    float const target_speed = forward ? v_max : -v_max;
+    float v_error = target_speed - m_linearSpeedMotor;
     float accel_desired;
 
     if (forward) {
@@ -258,6 +268,13 @@ void Robot::samsonUpdateMotors()
     // Appliquer l'accélération lissée pour calculer la nouvelle vitesse
     float v = m_linearSpeedMotor + m_currentLinearAccel * (m_dt / (float)1e6);
 
+    // Ne jamais dépasser la vitesse permise par la distance de freinage.
+    if (forward) {
+        v = utils::getMin(v, target_speed);
+    } else {
+        v = utils::getMax(v, target_speed);
+    }
+
     // Contraindre la vitesse dans les limites
     if (forward) {
         v = utils::getMax(v, 0.0f);
@@ -267,14 +284,14 @@ void Robot::samsonUpdateMotors()
         v = utils::getMax(v, -config::MAX_LINEAR_VELOCITY_M_S);
     }
 
-    // Arrêt final proche de la cible
-    if (distance < config::GO_MISSION_TOLERANCE_M/2.0f) {
+    // Arrêt final seulement quand il ne reste quasiment plus rien à parcourir.
+    if (remaining_distance < config::GO_MISSION_TOLERANCE_M / 4.0f && abs(v) < 0.02f) {
         v = 0.0;
         omega = 0.0;
         m_currentLinearAccel = 0.0;
     }
 
-    if (distance < 2 * config::GO_MISSION_TOLERANCE_M)
+    if (remaining_distance < 2 * config::GO_MISSION_TOLERANCE_M)
         omega = 0.0f;
 
     m_linearSpeedMotor = v;
