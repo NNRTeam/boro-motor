@@ -7,7 +7,7 @@
 
 class Motor{
     public:
-        Motor(int dirPin, int stepPin, int sensorCS, bool invertSensor, double wheelPerimeter, void (*stepCallback)(bool forward));
+        Motor(int dirPin, int stepPin, int sensorCS, bool invertSensor, bool invertMotor, double wheelPerimeter, void (*stepCallback)(bool forward));
         void run();
         void setLinearSpeed(float speed);
         void stop() { m_speed = 0.0; }
@@ -17,8 +17,7 @@ class Motor{
     protected:
 
         void setSpeed(float speed);
-        void stepFW();
-        void stepBW();
+        void step();
 
         void (*m_stepCallback)(bool forward);
         int PIN_DIR;          //Pin de direction
@@ -33,6 +32,7 @@ class Motor{
 
         HallSensor* m_sensor;
         bool m_is_sensor_inverted;
+        bool m_is_motor_inverted;
 
         unsigned long long int m_lastStepTime = 0;
 };

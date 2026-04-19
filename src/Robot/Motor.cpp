@@ -22,8 +22,8 @@ unsigned int calculerTempsEntreSteps(
 }
 
 
-Motor::Motor(int dirPin, int stepPin, int sensorCS, bool invertSensor, double wheelPerimeter, void (*stepCallback)(bool forward))
-    : m_stepCallback(stepCallback), PIN_DIR(dirPin), PIN_STEP(stepPin), m_WheelPerimeter(wheelPerimeter), m_is_sensor_inverted(invertSensor)
+Motor::Motor(int dirPin, int stepPin, int sensorCS, bool invertSensor, bool invertMotor, double wheelPerimeter, void (*stepCallback)(bool forward))
+    : m_stepCallback(stepCallback), PIN_DIR(dirPin), PIN_STEP(stepPin), m_WheelPerimeter(wheelPerimeter), m_is_sensor_inverted(invertSensor), m_is_motor_inverted(invertMotor)
 {
     if (sensorCS != -1)
         m_sensor = new HallSensor(sensorCS, invertSensor);
@@ -41,17 +41,10 @@ void Motor::run()
                                                         config::MICROSTEPS);
     if (currentTime - m_lastStepTime >= interStepTime)
     {
-        if (m_speed > 0)
-        {
-            stepFW();
-            m_stepCallback(!m_is_sensor_inverted);
-        }
-        else if (m_speed < 0)
-        {
-            stepBW();
-            m_stepCallback(m_is_sensor_inverted);
-        }
-
+        step();
+        // Report actual wheel forward direction based on motor inversion
+        bool wheelForward = (m_speed > 0) != m_is_motor_inverted;
+        m_stepCallback(wheelForward);
         m_lastStepTime = currentTime;
     }
 
@@ -59,7 +52,7 @@ void Motor::run()
 
 void Motor::setLinearSpeed(float speed)
 {
-    float speed_rad_s = speed/(m_WheelPerimeter/(2*PI)) * ( m_is_sensor_inverted ? -1 : 1);
+    float speed_rad_s = speed/(m_WheelPerimeter/(2*PI)) * ( m_is_motor_inverted ? -1 : 1);
     setSpeed(speed_rad_s);
 }
 
@@ -72,14 +65,7 @@ void Motor::setSpeed(float speed)
         digitalWrite(PIN_DIR, HIGH);
 }
 
-void Motor::stepFW()
-{
-    digitalWrite(PIN_STEP, HIGH);
-    delayMicroseconds(2);
-    digitalWrite(PIN_STEP, LOW);
-}
-
-void Motor::stepBW()
+void Motor::step()
 {
     digitalWrite(PIN_STEP, HIGH);
     delayMicroseconds(2);

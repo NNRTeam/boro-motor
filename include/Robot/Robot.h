@@ -27,6 +27,7 @@ class Robot
     protected:
         void Control();
         void updateOdometry();
+        void updateMotorOdometry();
         void setSpeeds(float linearSpeed, float angularSpeed);
         void samsonUpdateMotors();
         void rotationUpdateMotors();
@@ -62,6 +63,9 @@ class Robot
         unsigned long long int m_lastControlTime = 0;
         unsigned long long int m_lastOdomTime = 0;
         unsigned long long int m_lastAssignedMission = 0;
+
+        volatile long m_leftStepCount = 0;
+        volatile long m_rightStepCount = 0;
     private:
         unsigned int m_dt1 = 0;
         unsigned int m_dt2 = 0;

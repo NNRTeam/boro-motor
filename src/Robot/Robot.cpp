@@ -14,6 +14,7 @@ Robot::Robot(Logger logger, missionManager *missionManager) : m_logger(logger), 
                                 config::M1_STEP_PIN,
                                 -1,
                                 false,
+                                config::M1_INVERT_DIR,
                                 config::M1_WHEEL_DIAMETER_MM * M_PI / 1000.0,
                                 Robot::leftMotorStepNotify);
 
@@ -21,6 +22,7 @@ Robot::Robot(Logger logger, missionManager *missionManager) : m_logger(logger), 
                                 config::M2_STEP_PIN,
                                 -1,
                                 true,
+                                config::M2_INVERT_DIR,
                                 config::M2_WHEEL_DIAMETER_MM * M_PI / 1000.0,
                                 Robot::rightMotorStepNotify);
     }
@@ -29,6 +31,7 @@ Robot::Robot(Logger logger, missionManager *missionManager) : m_logger(logger), 
                                 config::M1_STEP_PIN,
                                 config::OD1_CS_PIN,
                                 false,
+                                config::M1_INVERT_DIR,
                                 config::M1_WHEEL_DIAMETER_MM * M_PI / 1000.0,
                                 Robot::leftMotorStepNotify);
 
@@ -36,6 +39,7 @@ Robot::Robot(Logger logger, missionManager *missionManager) : m_logger(logger), 
                                 config::M2_STEP_PIN,
                                 config::OD2_CS_PIN,
                                 true,
+                                config::M2_INVERT_DIR,
                                 config::M2_WHEEL_DIAMETER_MM * M_PI / 1000.0,
                                 Robot::rightMotorStepNotify);
     }
@@ -59,6 +63,11 @@ void Robot::resetOdometry() {
 
     m_lastLinearSpeed = 0.0;
     m_lastAngularSpeed = 0.0;
+    m_linearSpeedMotor = 0.0;
+    m_angularSpeedMotor = 0.0;
+    m_currentLinearAccel = 0.0;
+    m_leftStepCount = 0;
+    m_rightStepCount = 0;
 }
 
 void Robot::Control()
@@ -71,6 +80,14 @@ void Robot::Control()
     }
 
     if (currentTime - m_lastControlTime >= 1e6/config::CONTROL_LOOP_FREQUENCY_HZ) {
+        // Plafonner m_dt pour éviter une explosion au premier tick ou après une longue pause
+        unsigned long long elapsed = currentTime - m_lastControlTime;
+        unsigned int const maxDt = (unsigned int)(2.0f * 1e6f / config::CONTROL_LOOP_FREQUENCY_HZ);
+        m_dt = (elapsed > maxDt) ? maxDt : (unsigned int)elapsed;
+        m_lastControlTime = currentTime;
+        if (config::MOTOR_ODOM_ONLY) {
+            updateMotorOdometry();
+        }
         bool hasActiveMission = m_missionManager->hasActiveMissions();
         if (!hasActiveMission && m_missionManager->hasMissions())
         {
@@ -86,12 +103,12 @@ void Robot::Control()
         }
         if (hasActiveMission)
         {
+            m_lastAssignedMission = currentTime;
             digitalWrite(config::M_EN_PIN, LOW);
             checkMissionArrived();
             Mission* CurrentMission = m_missionManager->getCurrentMission();
             if (CurrentMission == nullptr) {
                 stop();
-                m_lastControlTime = currentTime;
                 return;
             }
             else if (CurrentMission->isActive() == false) {
@@ -108,13 +125,15 @@ void Robot::Control()
                 rotationUpdateMotors();
             else if (CurrentMission->getType() == Mission::Type::STOP || CurrentMission->getType() == Mission::Type::WAIT)
                 stop();
-            m_lastControlTime = currentTime;
 
             m_logger.debug("Robot Position - X: " + String(getX(), 4) + " m, Y: " + String(getY(), 4) + " m, Theta: " + String(getTheta(), 4) + " rad");
             m_logger.debug("Robot Speed - Linear: " + String(getLinearSpeed(), 4) + " m/s, Angular: " + String(getAngularSpeed(), 4) + " rad/s");
         }
-        else if (currentTime - m_lastControlTime > 10*1e6) {
-            digitalWrite(config::M_EN_PIN, HIGH); // free motors
+        else {
+            // Libérer les moteurs après 10s d'inactivité
+            if (currentTime - m_lastAssignedMission > 10ULL * 1000000ULL) {
+                digitalWrite(config::M_EN_PIN, HIGH);
+            }
         }
     }
 }
@@ -136,21 +155,20 @@ void Robot::updateOdometry() {
     // integration selon la methode des trapezes
     float angular_speed = (0.5*m_angularSpeed+0.5*m_lastAngularSpeed);
     float linear_speed = (0.5*m_linearSpeed+0.5*m_lastLinearSpeed);
-    if (abs(angular_speed) > 0.0001){ // dans le cas ou la vitesse angulaire est non nulle on utilise la methode de l'arc de cercle
-        //methode de l'arc de cercle pour calculer la nouvelle position
-        theta = theta + angular_speed*m_dt/(float)1e6;
-        float R = linear_speed/angular_speed;
-        x = x - R*sin(theta) + R*sin(theta+angular_speed*m_dt/(float)1e6);
-        y = y + R*cos(theta) - R*cos(theta+angular_speed*m_dt/(float)1e6);
-    }else{
-        //methode de la droite pour calculer la nouvelle position
-        theta = theta + angular_speed*m_dt/(float)1e6;
-        x = x + linear_speed*cos(theta)*m_dt/(float)1e6;
-        y = y + linear_speed*sin(theta)*m_dt/(float)1e6;
+    float dTheta = angular_speed * m_dt / (float)1e6;
+    if (abs(dTheta) > 1e-6f) {
+        // Méthode de l'arc de cercle
+        float R = linear_speed / angular_speed;
+        x += R * (sin(theta + dTheta) - sin(theta));
+        y += -R * (cos(theta + dTheta) - cos(theta));
+    } else {
+        // Méthode de la droite
+        x += linear_speed * cos(theta) * m_dt / (float)1e6;
+        y += linear_speed * sin(theta) * m_dt / (float)1e6;
     }
+    theta = utils::normalizeAngle(theta + dTheta);
     m_lastLinearSpeed = m_linearSpeed;
     m_lastAngularSpeed = m_angularSpeed;
-    theta = utils::normalizeAngle(theta);
 }
 
 void Robot::setSpeeds(float linearSpeed, float angularSpeed)
@@ -221,10 +239,28 @@ void Robot::samsonUpdateMotors()
         ? utils::getMax(-longitudinal_distance, 0.0f)
         : utils::getMax(longitudinal_distance, 0.0f);
 
-    // Vitesse maximale autorisée pour pouvoir s'arrêter à temps:
-    // v² = 2 * a * d  =>  v = sqrt(2ad)
-    float const braking_distance = utils::getMax(remaining_distance - config::GO_MISSION_TOLERANCE_M, 0.0f);
-    float v_max = sqrt(2.0f * config::LINEAR_ACCELERATION_M_S2 * braking_distance);
+    // Distance de freinage avec prise en compte du jerk.
+    // Avec profil trapézoïdal en accélération (jerk limité) :
+    //   d_frein = v²/(2a) + v*a/(2j)
+    // Le terme v*a/(2j) représente la distance supplémentaire parcourue
+    // pendant que la décélération monte en rampe de 0 à a_max.
+    float const a_max = config::LINEAR_ACCELERATION_M_S2;
+    float const j_max = config::LINEAR_JERK_M_S3;
+    float const braking_margin = utils::getMax(remaining_distance - config::GO_MISSION_TOLERANCE_M*0.5, 0.0f);
+
+    // Résoudre la vitesse max admissible pour freiner sur braking_margin
+    // d = v²/(2a) + v*a/(2j)  =>  (1/(2a)) v² + (a/(2j)) v - d = 0
+    // Coefficients : A = 1/(2a), B = a/(2j), C = -d
+    // v = (-B + sqrt(B² + 4*A*d)) / (2*A)
+    float const A = 1.0f / (2.0f * a_max);
+    float const B = a_max / (2.0f * j_max);
+    float const discriminant = B * B + 4.0f * A * braking_margin;
+    float v_max;
+    if (discriminant > 0.0f) {
+        v_max = (-B + sqrt(discriminant)) / (2.0f * A);
+    } else {
+        v_max = 0.0f;
+    }
     v_max = utils::getMin(v_max, config::MAX_LINEAR_VELOCITY_M_S);
 
     // Réduire aussi la vitesse si l'erreur latérale ou angulaire est importante,
@@ -233,49 +269,33 @@ void Robot::samsonUpdateMotors()
     float const lateral_slowdown = 1.0f / (1.0f + 4.0f * abs(lateral_error));
     v_max *= utils::getMax(0.2f, heading_slowdown * lateral_slowdown);
 
-    // Calculer l'accélération désirée en fonction de l'écart de vitesse
+    // Vitesse cible signée
     float const target_speed = forward ? v_max : -v_max;
-    float v_error = target_speed - m_linearSpeedMotor;
-    float accel_desired;
 
-    if (forward) {
-        if (v_error > 0) {
-            accel_desired = config::LINEAR_ACCELERATION_M_S2;  // Accélérer
-        } else if (v_error < 0) {
-            accel_desired = -config::LINEAR_ACCELERATION_M_S2; // Décélérer
-        } else {
-            accel_desired = 0.0f; // Maintenir la vitesse
-        }
-    } else {
-        if (v_error < 0) {
-            accel_desired = -config::LINEAR_ACCELERATION_M_S2; // Accélérer en arrière
-        } else if (v_error > 0) {
-            accel_desired = config::LINEAR_ACCELERATION_M_S2;  // Décélérer
-        } else {
-            accel_desired = 0.0f; // Maintenir la vitesse
-        }
-    }
+    // Accélération désirée : proportionnelle à l'écart de vitesse,
+    // saturée à ±a_max. Ceci gère symétriquement accélération et décélération.
+    float const v_error = target_speed - m_linearSpeedMotor;
+    float const kp_accel = 10.0f; // gain pour convertir erreur de vitesse en consigne d'accélération
+    float accel_desired = utils::getMin(utils::getMax(kp_accel * v_error, -a_max), a_max);
 
-    // Limiter le jerk (variation de l'accélération)
+    // Limiter le jerk (variation de l'accélération) symétriquement
+    // en accélération ET en décélération
+    float const dt_s = m_dt / (float)1e6;
+    float const max_jerk_change = j_max * dt_s;
     float accel_diff = accel_desired - m_currentLinearAccel;
-    float max_jerk_change = config::LINEAR_JERK_M_S3 * (m_dt / (float)1e6);
     if (abs(accel_diff) > max_jerk_change) {
         m_currentLinearAccel += utils::sign(accel_diff) * max_jerk_change;
     } else {
         m_currentLinearAccel = accel_desired;
     }
 
+    // Limiter l'accélération courante à ±a_max
+    m_currentLinearAccel = utils::getMin(utils::getMax(m_currentLinearAccel, -a_max), a_max);
+
     // Appliquer l'accélération lissée pour calculer la nouvelle vitesse
-    float v = m_linearSpeedMotor + m_currentLinearAccel * (m_dt / (float)1e6);
+    float v = m_linearSpeedMotor + m_currentLinearAccel * dt_s;
 
-    // Ne jamais dépasser la vitesse permise par la distance de freinage.
-    if (forward) {
-        v = utils::getMin(v, target_speed);
-    } else {
-        v = utils::getMax(v, target_speed);
-    }
-
-    // Contraindre la vitesse dans les limites
+    // Contraindre la vitesse dans les limites absolues (pas de hard-clamp sur target_speed)
     if (forward) {
         v = utils::getMax(v, 0.0f);
         v = utils::getMin(v, config::MAX_LINEAR_VELOCITY_M_S);
@@ -338,6 +358,7 @@ void Robot::stop()
     motor_right->stop();
     m_linearSpeedMotor = 0.0;
     m_angularSpeedMotor = 0.0;
+    m_currentLinearAccel = 0.0;
     m_lastAngularSpeed = 0.0;
     m_lastLinearSpeed = 0.0;
 }
@@ -353,6 +374,7 @@ bool Robot::checkMissionArrived()
             m_missionManager->endCurrentMission();
             m_angularSpeedMotor = 0.0;
             m_linearSpeedMotor = 0.0;
+            m_currentLinearAccel = 0.0;
             return true;
         }
     } else if (currentMission->getType() == Mission::Type::TURN) {
@@ -362,6 +384,7 @@ bool Robot::checkMissionArrived()
             m_missionManager->endCurrentMission();
             m_angularSpeedMotor = 0.0;
             m_linearSpeedMotor = 0.0;
+            m_currentLinearAccel = 0.0;
             return true;
         }
     }
@@ -387,27 +410,42 @@ void Robot::parseOdometryData(String const &message)
 void Robot::leftMotorStepNotify(bool forward)
 {
     if (instance == nullptr) return;
-    float distance_motor = (instance->motor_left->getWheelPerimeter()) / (config::STEP_PER_REVOLUTION * config::MICROSTEPS); // in mm
-    if (!forward)
-        distance_motor = -distance_motor;
-    float const robot_angle_change = distance_motor / config::M_WHEEL_BASE_MM * 1000.0; // in rad
-    float const avg_distance = distance_motor/2.0f; // in m
-    instance->m_motorTheta -= robot_angle_change; // in rad
-    instance->m_motorTheta = utils::normalizeAngle(instance->m_motorTheta); // Normaliser entre -π et π
-    instance->m_motorX += avg_distance * cos(instance->m_motorTheta); // in m
-    instance->m_motorY += avg_distance * sin(instance->m_motorTheta); // in m
+    if (forward) instance->m_leftStepCount++;
+    else instance->m_leftStepCount--;
 }
 
 void Robot::rightMotorStepNotify(bool forward)
 {
     if (instance == nullptr) return;
-    float distance_motor = (instance->motor_right->getWheelPerimeter()) / (config::STEP_PER_REVOLUTION * config::MICROSTEPS); // in mm
-    if (!forward)
-        distance_motor = -distance_motor;
-    float const robot_angle_change = distance_motor / config::M_WHEEL_BASE_MM * 1000.0; // in rad
-    float const avg_distance = distance_motor/2.0f; // in m
-    instance->m_motorTheta += robot_angle_change; // in rad
-    instance->m_motorTheta = utils::normalizeAngle(instance->m_motorTheta); // Normaliser entre -π et π
-    instance->m_motorX += avg_distance * cos(instance->m_motorTheta); // in m
-    instance->m_motorY += avg_distance * sin(instance->m_motorTheta); // in m
+    if (forward) instance->m_rightStepCount++;
+    else instance->m_rightStepCount--;
+}
+
+void Robot::updateMotorOdometry()
+{
+    // Lire et remettre à zéro les compteurs de pas
+    long leftSteps = m_leftStepCount;
+    long rightSteps = m_rightStepCount;
+    m_leftStepCount -= leftSteps;
+    m_rightStepCount -= rightSteps;
+
+    // Calculer la distance parcourue par chaque roue
+    float const stepsPerRev = config::STEP_PER_REVOLUTION * config::MICROSTEPS;
+    float distLeft = leftSteps * motor_left->getWheelPerimeter() / stepsPerRev;
+    float distRight = rightSteps * motor_right->getWheelPerimeter() / stepsPerRev;
+
+    // Cinématique différentielle
+    float dCenter = (distLeft + distRight) / 2.0f;
+    float dTheta = (distRight - distLeft) / (config::M_WHEEL_BASE_MM / 1000.0f);
+
+    // Mise à jour de la position par arc de cercle ou ligne droite
+    if (abs(dTheta) > 1e-6f) {
+        float R = dCenter / dTheta;
+        m_motorX += R * (sin(m_motorTheta + dTheta) - sin(m_motorTheta));
+        m_motorY += -R * (cos(m_motorTheta + dTheta) - cos(m_motorTheta));
+    } else {
+        m_motorX += dCenter * cos(m_motorTheta);
+        m_motorY += dCenter * sin(m_motorTheta);
+    }
+    m_motorTheta = utils::normalizeAngle(m_motorTheta + dTheta);
 }

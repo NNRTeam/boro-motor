@@ -24,13 +24,16 @@ namespace config {
 
     // MECHANICAL CONFIGURATION
 
-    float constexpr M1_WHEEL_DIAMETER_MM = 60.0f; // Motor Wheel diameter in millimeters
-    float constexpr M2_WHEEL_DIAMETER_MM = 60.0f; // Motor Wheel diameter in millimeters
+    float constexpr M1_WHEEL_DIAMETER_MM = 57.0173f; // Motor Wheel diameter in millimeters
+    float constexpr M2_WHEEL_DIAMETER_MM = 57.0173f; // Motor Wheel diameter in millimeters
+
+    bool constexpr M1_INVERT_DIR = false; // Invert motor 1 direction (set true if wheel goes backward)
+    bool constexpr M2_INVERT_DIR = true;  // Invert motor 2 direction (set true if wheel goes backward)
 
     float constexpr OD1_WHEEL_DIAMETER_MM = 50.0f; // Odom Wheel diameter in millimeters
     float constexpr OD2_WHEEL_DIAMETER_MM = 50.0f; // Odom Wheel diameter in millimeters
 
-    float constexpr M_WHEEL_BASE_MM = 170.5f;    // Distance between the two motors wheels in millimeters
+    float constexpr M_WHEEL_BASE_MM = 165.6f;    // Distance between the two motors wheels in millimeters
     float constexpr OD_WHEEL_BASE_MM = 200.0f;   // Distance between the two odom wheels in millimeters
 
     // MOTION CONFIGURATION
@@ -38,14 +41,13 @@ namespace config {
     float constexpr GO_MISSION_TOLERANCE_M = 0.01f;        // Tolerance for GO missions in meters
     float constexpr TURN_MISSION_TOLERANCE_RAD = 0.01f;     // Tolerance for TURN missions in radians
 
-    float constexpr MAX_LINEAR_VELOCITY_M_S = 0.8f;    // Maximum linear velocity in metter per second
-    float constexpr MAX_ANGULAR_VELOCITY_RAD_S = 5.0f;    // Maximum angular velocity in radians per second
+    float constexpr MAX_LINEAR_VELOCITY_M_S = 0.5f;    // Maximum linear velocity in metter per second
+    float constexpr MAX_ANGULAR_VELOCITY_RAD_S = 4.0f;    // Maximum angular velocity in radians per second
 
     float constexpr LINEAR_ACCELERATION_M_S2 = 0.9f;      // Linear acceleration in metter per second squared
-    float constexpr ANGULAR_ACCELERATION_RAD_S2 = 7.0f;     // Angu
-    // ar acceleration in radians per second squared
+    float constexpr ANGULAR_ACCELERATION_RAD_S2 = 5.0f;     // Angular acceleration in radians per second squared
 
-    float constexpr LINEAR_JERK_M_S3 = 2.0f;              // Linear jerk (rate of change of acceleration) in m/s^3
+    float constexpr LINEAR_JERK_M_S3 = 1.0f;              // Linear jerk (rate of change of acceleration) in m/s^3
 
     // SOFTWARE CONFIGURATION
 

@@ -8,7 +8,7 @@ def reset_dfu_before_upload(source, target, env):
 
     try:
         # Récupérer le port série de l'environnement PlatformIO
-        upload_port = env.get("UPLOAD_PORT", "/dev/ttyACM0")
+        upload_port = env.get("UPLOAD_PORT", "/dev/motor")
 
         # Ouvrir le port à 1200 bauds (cela déclenche le bootloader)
         ser = serial.Serial(upload_port, 1200, timeout=1)
