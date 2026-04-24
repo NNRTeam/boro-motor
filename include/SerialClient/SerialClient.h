@@ -23,7 +23,7 @@ private:
     Logger& m_logger;
     missionManager* m_missionManager;
     Robot* m_robot;
-    unsigned long long int m_last_odom_send;
+    unsigned long long int m_last_odom_send = 0;
 };
 
 #endif // I2CCLIENT_H
