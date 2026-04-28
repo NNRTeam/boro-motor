@@ -295,13 +295,21 @@ void Robot::samsonUpdateMotors()
     // Appliquer l'accélération lissée pour calculer la nouvelle vitesse
     float v = m_linearSpeedMotor + m_currentLinearAccel * dt_s;
 
-    // Contraindre la vitesse dans les limites absolues (pas de hard-clamp sur target_speed)
+    // Contraindre la vitesse : limites absolues ET profil de freinage (v_max)
+    // v_max intègre déjà MAX_LINEAR_VELOCITY_M_S, ce clamp assure que le robot
+    // ne dépasse jamais la vitesse admissible pour freiner à temps (déplacements courts).
     if (forward) {
         v = utils::getMax(v, 0.0f);
-        v = utils::getMin(v, config::MAX_LINEAR_VELOCITY_M_S);
+        v = utils::getMin(v, v_max);
     } else {
         v = utils::getMin(v, 0.0f);
-        v = utils::getMax(v, -config::MAX_LINEAR_VELOCITY_M_S);
+        v = utils::getMax(v, -v_max);
+    }
+    // Resynchroniser m_currentLinearAccel avec la vitesse réellement appliquée,
+    // pour éviter que l'état interne du jerk limiter reste en avance sur la réalité.
+    if (dt_s > 1e-9f) {
+        float const implied_accel = (v - m_linearSpeedMotor) / dt_s;
+        m_currentLinearAccel = utils::getMin(utils::getMax(implied_accel, -a_max), a_max);
     }
 
     // Arrêt final seulement quand il ne reste quasiment plus rien à parcourir.
@@ -367,10 +375,13 @@ bool Robot::checkMissionArrived()
 {
     Mission* currentMission = m_missionManager->getCurrentMission();
     if (currentMission->getType() == Mission::Type::GO) {
-        float const dx = currentMission->getTargetX() - getX();
-        float const dy = currentMission->getTargetY() - getY();
-        float const distance = sqrt(dx * dx + dy * dy);
-        if (distance < config::GO_MISSION_TOLERANCE_M) {
+        float const angle_cible = currentMission->getTargetTheta();
+        float const longitudinal_distance = (getX() - currentMission->getTargetX()) * cos(angle_cible)
+                                           + (getY() - currentMission->getTargetY()) * sin(angle_cible);
+        float const remaining_distance = currentMission->isForward()
+            ? utils::getMax(-longitudinal_distance, 0.0f)
+            : utils::getMax(longitudinal_distance, 0.0f);
+        if (remaining_distance < config::GO_MISSION_TOLERANCE_M) {
             m_missionManager->endCurrentMission();
             m_angularSpeedMotor = 0.0;
             m_linearSpeedMotor = 0.0;
