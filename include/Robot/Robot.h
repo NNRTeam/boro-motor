@@ -15,6 +15,7 @@ class Robot
         void run();
         void resetOdometry();
         void parseOdometryData(String const &message);
+        void emergencyStop(bool enable);
         [[nodiscard]] float getX() const { if (config::MOTOR_ODOM_ONLY) return m_motorX; else return x; }
         [[nodiscard]] float getY() const { if (config::MOTOR_ODOM_ONLY) return m_motorY; else return y; }
         [[nodiscard]] float getTheta() const { if (config::MOTOR_ODOM_ONLY) return m_motorTheta; else return theta; }
@@ -33,6 +34,7 @@ class Robot
         void rotationUpdateMotors();
         void stop();
         bool checkMissionArrived();
+        void setEmergencyStopMotorSpeed();
 
         Logger m_logger;
 
@@ -63,6 +65,8 @@ class Robot
         unsigned long long int m_lastControlTime = 0;
         unsigned long long int m_lastOdomTime = 0;
         unsigned long long int m_lastAssignedMission = 0;
+
+        bool m_isEmergencyStop = false;
 
         volatile long m_leftStepCount = 0;
         volatile long m_rightStepCount = 0;

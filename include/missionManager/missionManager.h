@@ -23,6 +23,7 @@ public:
     [[nodiscard]] bool hasActiveMissions();
     [[nodiscard]] Mission::Type getCurrentMissionType() const;
     [[nodiscard]] Mission* parseMissionMessage(String const &message);
+    void cancelAllMissions();
 
     void addFakeMissionForTest();
 protected:

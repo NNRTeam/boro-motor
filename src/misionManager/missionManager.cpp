@@ -151,6 +151,14 @@ Mission* missionManager::startNextMission()
     return mission;
 }
 
+void missionManager::cancelAllMissions()
+{
+    for (auto &mission: missions)
+        mission.setStatus(Mission::Status::CANCELED);
+
+    missions.clear();
+}
+
 void missionManager::addFakeMissionForTest()
 {
     Mission mission1(1, Mission::Type::GO, Mission::Options::NONE, Mission::Direction::FORWARD, 0.5f, 0.0f, 0.0f);

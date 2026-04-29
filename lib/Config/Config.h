@@ -49,6 +49,9 @@ namespace config {
 
     float constexpr LINEAR_JERK_M_S3 = 0.8f;              // Linear jerk (rate of change of acceleration) in m/s^3
 
+    float constexpr LINEAR_EMERGENCY_MAX_DECELEATION = 0.9;
+    float constexpr ANGULAR_EMERGENCY_MAX_DECELEATION = 9.0f;
+
     // SOFTWARE CONFIGURATION
 
     float constexpr CONTROL_LOOP_FREQUENCY_HZ = 25.0f; // Control loop frequency in Hertz

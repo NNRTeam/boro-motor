@@ -47,9 +47,11 @@ Robot::Robot(Logger logger, missionManager *missionManager) : m_logger(logger), 
 }
 
 void Robot::run() {
-    Control();
+    // Appeler run() en premier pour minimiser la latence entre deux steps,
+    // indépendamment du temps pris par Control().
     motor_left->run();
     motor_right->run();
+    Control();
 }
 
 void Robot::resetOdometry() {
@@ -87,6 +89,10 @@ void Robot::Control()
         m_lastControlTime = currentTime;
         if (config::MOTOR_ODOM_ONLY) {
             updateMotorOdometry();
+        }
+        if (m_isEmergencyStop) {
+            setEmergencyStopMotorSpeed();
+            return;
         }
         bool hasActiveMission = m_missionManager->hasActiveMissions();
         if (!hasActiveMission && m_missionManager->hasMissions())
@@ -126,8 +132,8 @@ void Robot::Control()
             else if (CurrentMission->getType() == Mission::Type::STOP || CurrentMission->getType() == Mission::Type::WAIT)
                 stop();
 
-            m_logger.debug("Robot Position - X: " + String(getX(), 4) + " m, Y: " + String(getY(), 4) + " m, Theta: " + String(getTheta(), 4) + " rad");
-            m_logger.debug("Robot Speed - Linear: " + String(getLinearSpeed(), 4) + " m/s, Angular: " + String(getAngularSpeed(), 4) + " rad/s");
+            //m_logger.debug("Robot Position - X: " + String(getX(), 4) + " m, Y: " + String(getY(), 4) + " m, Theta: " + String(getTheta(), 4) + " rad");
+            //m_logger.debug("Robot Speed - Linear: " + String(getLinearSpeed(), 4) + " m/s, Angular: " + String(getAngularSpeed(), 4) + " rad/s");
         }
         else {
             // Libérer les moteurs après 10s d'inactivité
@@ -171,6 +177,13 @@ void Robot::updateOdometry() {
     m_lastAngularSpeed = m_angularSpeed;
 }
 
+void Robot::emergencyStop(bool enable)
+{
+    if (enable)
+        m_missionManager->cancelAllMissions();
+    m_isEmergencyStop = enable;
+}
+
 void Robot::setSpeeds(float linearSpeed, float angularSpeed)
 {
     float v_right = linearSpeed + (angularSpeed*config::M_WHEEL_BASE_MM/1000.0)/2.0f;
@@ -178,6 +191,24 @@ void Robot::setSpeeds(float linearSpeed, float angularSpeed)
 
     motor_right->setLinearSpeed(v_right);
     motor_left->setLinearSpeed(v_left);
+}
+
+void Robot::setEmergencyStopMotorSpeed()
+{
+    if (m_angularSpeedMotor > 0) {
+        m_angularSpeedMotor = utils::getMax(m_angularSpeedMotor - config::ANGULAR_EMERGENCY_MAX_DECELEATION * (m_dt / (float)1e6), 0.0f);
+    } else if (m_angularSpeedMotor < 0) {
+        m_angularSpeedMotor = utils::getMin(m_angularSpeedMotor + config::ANGULAR_EMERGENCY_MAX_DECELEATION * (m_dt / (float)1e6), 0.0f);
+    }
+    
+    if (m_linearSpeedMotor > 0) {
+        m_linearSpeedMotor = utils::getMax(m_linearSpeedMotor - config::LINEAR_EMERGENCY_MAX_DECELEATION * (m_dt / (float)1e6), 0.0f);
+    } else if (m_linearSpeedMotor < 0) {
+        m_linearSpeedMotor = utils::getMin(m_linearSpeedMotor + config::LINEAR_EMERGENCY_MAX_DECELEATION * (m_dt / (float)1e6), 0.0f);
+    }
+    m_lastLinearSpeed = m_linearSpeed;
+    m_lastAngularSpeed = m_angularSpeed;
+    setSpeeds(m_linearSpeedMotor, m_angularSpeedMotor);
 }
 
 void Robot::samsonUpdateMotors()
@@ -226,7 +257,7 @@ void Robot::samsonUpdateMotors()
     // Lisser l'accélération angulaire
     float omega = m_angularSpeedMotor;
     float omega_diff = omega_desired - omega;
-    float max_omega_change = config::ANGULAR_ACCELERATION_RAD_S2 * (m_dt / (float)1e6) * 2;
+    float max_omega_change = config::ANGULAR_ACCELERATION_RAD_S2 * (m_dt / (float)1e6);
     if (abs(omega_diff) > max_omega_change) {
         omega += utils::sign(omega_diff) * max_omega_change;
     } else {
@@ -262,15 +293,17 @@ void Robot::samsonUpdateMotors()
         v_max = 0.0f;
     }
     v_max = utils::getMin(v_max, config::MAX_LINEAR_VELOCITY_M_S);
+    float const v_max_braking = v_max; // limite dure pour la distance de freinage
 
-    // Réduire aussi la vitesse si l'erreur latérale ou angulaire est importante,
-    // afin d'éviter d'arriver trop vite de travers.
+    // Réduire aussi la vitesse si l'erreur latérale ou angulaire est importante.
+    // Utilisé uniquement comme cible douce (via le jerk limiter) pour éviter
+    // les à-coups si l'erreur de cap fluctue légèrement.
     float const heading_slowdown = 1.0f / (1.0f + 2.0f * abs(theta_error));
     float const lateral_slowdown = 1.0f / (1.0f + 4.0f * abs(lateral_error));
-    v_max *= utils::getMax(0.2f, heading_slowdown * lateral_slowdown);
+    float const v_max_soft = v_max * utils::getMax(0.2f, heading_slowdown * lateral_slowdown);
 
-    // Vitesse cible signée
-    float const target_speed = forward ? v_max : -v_max;
+    // Vitesse cible signée (cible douce)
+    float const target_speed = forward ? v_max_soft : -v_max_soft;
 
     // Accélération désirée : proportionnelle à l'écart de vitesse,
     // saturée à ±a_max. Ceci gère symétriquement accélération et décélération.
@@ -300,10 +333,10 @@ void Robot::samsonUpdateMotors()
     // ne dépasse jamais la vitesse admissible pour freiner à temps (déplacements courts).
     if (forward) {
         v = utils::getMax(v, 0.0f);
-        v = utils::getMin(v, v_max);
+        v = utils::getMin(v, v_max_braking); // clamp dur : distance de freinage uniquement
     } else {
         v = utils::getMin(v, 0.0f);
-        v = utils::getMax(v, -v_max);
+        v = utils::getMax(v, -v_max_braking);
     }
     // Resynchroniser m_currentLinearAccel avec la vitesse réellement appliquée,
     // pour éviter que l'état interne du jerk limiter reste en avance sur la réalité.
@@ -319,8 +352,14 @@ void Robot::samsonUpdateMotors()
         m_currentLinearAccel = 0.0;
     }
 
-    if (remaining_distance < 2 * config::GO_MISSION_TOLERANCE_M)
-        omega = 0.0f;
+    if (remaining_distance < 2 * config::GO_MISSION_TOLERANCE_M) {
+        // Ramener omega vers 0 progressivement pour éviter un à-coup latéral
+        float const max_omega_final = config::ANGULAR_ACCELERATION_RAD_S2 * dt_s;
+        if (abs(omega) > max_omega_final)
+            omega -= utils::sign(omega) * max_omega_final;
+        else
+            omega = 0.0f;
+    }
 
     m_linearSpeedMotor = v;
     m_angularSpeedMotor = omega;

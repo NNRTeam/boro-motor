@@ -152,6 +152,11 @@ def print_serial_logs(serial_port: str = DEFAULT_SERIAL_PORT, baud: int = DEFAUL
 	except Exception as e:
 		raise MissionError(f"Erreur pendant la lecture du port série: {e}")
 
+def emergencyStop(serial_port: str = DEFAULT_SERIAL_PORT, baud: int = DEFAULT_BAUD):
+	with _open_serial(serial_port, baud) as ser:
+		payload = "LXF"
+		ser.write(payload.encode('ascii'))
+		ser.flush()
 
 def resume():
 	send_mission('RESUME', backend='serial')
@@ -186,19 +191,40 @@ def oneTurn():
 
 
 if __name__ == '__main__':
-	reset()
+	#reset()
 
-	for i in range(0, 3):
-		go(1.5, 0.0)
-		turn(180)
-		go(0.0, 0.0)
-		turn(0)
+	go(1.0, 0.0)
+	turn(90)
+	# go(1.0, 0.25)
+	# turn(180)
+	# go(0.0, 0.25)
+	# turn(270)
+	# go(0.0, 0.0)
+	# turn(0)
+	
+	time.sleep(2)
+	emergencyStop()
+	time.sleep(5)
+	go(1.0, 0.0)
+	turn(90)
 
+	
+	#oneTurn()
 
-	#go(3.0, 0.0)
+	#go(1.5, 0.0)
 
-	# for i in range(0, 10):
-	# 	oneTurn()
+	# for i in range(0, 3):
+	# 	go(1.5, 0.0)
+	# 	turn(180)
+	# 	go(0.0, 0.0)
+	# 	turn(0)
+
+	#turn(180)
+	# go(-0.5, 0.0)
+	# turn(0)
+	# go(-0.2, 0.0)
+	# # for i in range(0, 10):
+	# # 	oneTurn()
 
 	print_serial_logs()
 	# time.sleep(10)

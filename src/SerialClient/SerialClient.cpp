@@ -32,6 +32,11 @@ void SerialClient::receiveData() {
     {
         m_robot->resetOdometry();
     }
+    else if (receivedData[0] == 'L')
+    {
+        // emergency stop command, set max deceleration to a high value to stop the robot as fast as possible
+        m_robot->emergencyStop(true);
+    }
     else if (receivedData[0] == 'O')
     {
         m_robot->parseOdometryData(receivedData);
@@ -44,6 +49,7 @@ void SerialClient::receiveData() {
     {
         Mission* mission = m_missionManager->parseMissionMessage(receivedData);
         m_missionManager->addMission(*mission);
+        m_robot->emergencyStop(false);
     }
 }
 
