@@ -230,11 +230,13 @@ void Robot::samsonUpdateMotors()
     float const longitudinal_distance = (getX() - m_missionManager->getCurrentMission()->getTargetX()) * cos(angle_cible)
                                        + (getY() - m_missionManager->getCurrentMission()->getTargetY()) * sin(angle_cible);
 
+    // Pour la marche arrière : l'arrière du robot doit pointer vers angle_cible.
+    // L'erreur est angle_cible - (theta + π), soit l'opposé de ce que l'on avait.
     float theta_error;
     if (forward)
         theta_error = angle_cible - getTheta();
     else
-        theta_error = (getTheta() + M_PI) - angle_cible;
+        theta_error = angle_cible - getTheta() - M_PI;
     theta_error = utils::normalizeAngle(theta_error);
 
     // Contrôleur Samson amélioré avec prise en compte de l'erreur latérale
@@ -242,10 +244,12 @@ void Robot::samsonUpdateMotors()
     float const kp_lateral = 2.0f;     // Gain proportionnel pour la correction latérale
     float const k_damping = 0.5f;      // Gain d'amortissement pour stabiliser l'approche
 
-    // Vitesse angulaire désirée : correction angulaire + correction latérale + amortissement
+    // En marche arrière (v < 0), l'effet de ω sur la déviation latérale est inversé,
+    // donc les termes de correction latérale changent de signe.
+    float const lateral_sign = forward ? -1.0f : 1.0f;
     float omega_desired = kp_angular * theta_error
-                        - kp_lateral * lateral_error
-                        - k_damping * lateral_error * abs(longitudinal_distance) / (distance + 0.01f);
+                        + lateral_sign * kp_lateral * lateral_error
+                        + lateral_sign * k_damping * lateral_error * abs(longitudinal_distance) / (distance + 0.01f);
 
     // Limiter la vitesse angulaire désirée
     if (forward) {
@@ -265,10 +269,10 @@ void Robot::samsonUpdateMotors()
     }
 
     // Distance restante utile le long de la trajectoire.
-    // `longitudinal_distance` est négative tant que la cible est devant en marche avant.
-    float remaining_distance = forward
-        ? utils::getMax(-longitudinal_distance, 0.0f)
-        : utils::getMax(longitudinal_distance, 0.0f);
+    // `longitudinal_distance` est toujours négative tant que la cible n'est pas atteinte
+    // (angle_cible pointe vers la cible, donc le robot est « derrière » elle).
+    // La formule est identique en marche avant et en marche arrière.
+    float remaining_distance = utils::getMax(-longitudinal_distance, 0.0f);
 
     // Distance de freinage avec prise en compte du jerk.
     // Avec profil trapézoïdal en accélération (jerk limité) :
@@ -417,9 +421,7 @@ bool Robot::checkMissionArrived()
         float const angle_cible = currentMission->getTargetTheta();
         float const longitudinal_distance = (getX() - currentMission->getTargetX()) * cos(angle_cible)
                                            + (getY() - currentMission->getTargetY()) * sin(angle_cible);
-        float const remaining_distance = currentMission->isForward()
-            ? utils::getMax(-longitudinal_distance, 0.0f)
-            : utils::getMax(longitudinal_distance, 0.0f);
+        float const remaining_distance = utils::getMax(-longitudinal_distance, 0.0f);
         if (remaining_distance < config::GO_MISSION_TOLERANCE_M) {
             m_missionManager->endCurrentMission();
             m_angularSpeedMotor = 0.0;
