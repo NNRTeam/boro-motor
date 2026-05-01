@@ -17,7 +17,8 @@ class Mission
             NOT_STARTED = 0,
             STARTED = 1,
             FINISHED = 2,
-            CANCELED = 3
+            FAILED = 3,
+            CANCELED = 4
         };
 
         enum class Options {

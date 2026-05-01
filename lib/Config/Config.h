@@ -49,7 +49,7 @@ namespace config {
 
     float constexpr LINEAR_JERK_M_S3 = 0.8f;              // Linear jerk (rate of change of acceleration) in m/s^3
 
-    float constexpr LINEAR_EMERGENCY_MAX_DECELEATION = 0.9;
+    float constexpr LINEAR_EMERGENCY_MAX_DECELEATION = 3.0;
     float constexpr ANGULAR_EMERGENCY_MAX_DECELEATION = 9.0f;
 
     // SOFTWARE CONFIGURATION
@@ -60,7 +60,7 @@ namespace config {
 
 
     unsigned long int constexpr SERIAL_BAUDRATE = 115200; // Serial communication baudrate
-    bool constexpr ENABLE_SERIAL_DEBUG = true; // Enable or disable serial debug messages
+    bool constexpr ENABLE_SERIAL_DEBUG = false; // Enable or disable serial debug messages
 
     int constexpr I2C_ADD = 0x30; // I2C address for the robot
 
