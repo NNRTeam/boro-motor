@@ -237,25 +237,33 @@ void Robot::setEmergencyStopMotorSpeed()
 
 void Robot::samsonUpdateMotors()
 {
-    float const dx = m_missionManager->getCurrentMission()->getTargetX() - getX();
-    float const dy = m_missionManager->getCurrentMission()->getTargetY() - getY();
+    float const dt_s = m_dt / (float)1e6;
+
+    Mission* mission = m_missionManager->getCurrentMission();
+    float const targetX     = mission->getTargetX();
+    float const targetY     = mission->getTargetY();
+    float const angle_cible = mission->getTargetTheta();
+    bool  const forward     = mission->isForward();
+
+    // ================================================================
+    // 1. ERREURS DE TRAJECTOIRE
+    // ================================================================
+    float const dx = getX() - targetX;
+    float const dy = getY() - targetY;
     float const distance = sqrt(dx * dx + dy * dy);
-    //float const angle_cible = atan2(dy, dx);
-    float const angle_cible =  m_missionManager->getCurrentMission()->getTargetTheta();
-    bool const forward = m_missionManager->getCurrentMission()->isForward();
 
-    // Calculer la distance latérale (perpendiculaire) à la droite de référence
-    // La droite est définie par le point (targetX, targetY) et l'angle angle_cible
-    // Distance signée perpendiculaire = (x - targetX)*sin(angle_cible) - (y - targetY)*cos(angle_cible)
-    float const lateral_error = (getX() - m_missionManager->getCurrentMission()->getTargetX()) * sin(angle_cible)
-                               - (getY() - m_missionManager->getCurrentMission()->getTargetY()) * cos(angle_cible);
+    // Erreur latérale (perpendiculaire à la droite de référence)
+    float const lateral_error = dx * sin(angle_cible) - dy * cos(angle_cible);
 
-    // Calculer la distance longitudinale (le long de la droite de référence)
-    float const longitudinal_distance = (getX() - m_missionManager->getCurrentMission()->getTargetX()) * cos(angle_cible)
-                                       + (getY() - m_missionManager->getCurrentMission()->getTargetY()) * sin(angle_cible);
+    // Distance longitudinale signée (le long de la droite de référence)
+    // Négative → le robot est derrière la cible ; positive → il l'a dépassée
+    float const longitudinal_distance = dx * cos(angle_cible) + dy * sin(angle_cible);
 
-    // Pour la marche arrière : l'arrière du robot doit pointer vers angle_cible.
-    // L'erreur est angle_cible - (theta + π), soit l'opposé de ce que l'on avait.
+    // Distance restante (toujours >= 0)
+    float const remaining_distance = utils::getMax(-longitudinal_distance, 0.0f);
+
+    // Erreur angulaire
+    // En marche arrière l'arrière du robot doit pointer vers angle_cible
     float theta_error;
     if (forward)
         theta_error = angle_cible - getTheta();
@@ -263,125 +271,131 @@ void Robot::samsonUpdateMotors()
         theta_error = angle_cible - getTheta() - M_PI;
     theta_error = utils::normalizeAngle(theta_error);
 
-    // Contrôleur Samson amélioré avec prise en compte de l'erreur latérale
-    float const kp_angular = 5.0f;     // Gain proportionnel pour la correction angulaire
-    float const kp_lateral = 2.0f;     // Gain proportionnel pour la correction latérale
-    float const k_damping = 0.5f;      // Gain d'amortissement pour stabiliser l'approche
+    // ================================================================
+    // 2. CONTRÔLE ANGULAIRE — suivi de trajectoire (Samson)
+    // ================================================================
+    float const kp_angular = 5.0f;   // gain correction cap
+    float const kp_lateral = 2.0f;   // gain correction latérale
+    float const k_damping  = 0.5f;   // amortissement latéral
 
-    // En marche arrière (v < 0), l'effet de ω sur la déviation latérale est inversé,
-    // donc les termes de correction latérale changent de signe.
+    // En marche arrière l'effet de ω sur la déviation latérale est inversé
     float const lateral_sign = forward ? -1.0f : 1.0f;
+
     float omega_desired = kp_angular * theta_error
                         + lateral_sign * kp_lateral * lateral_error
-                        + lateral_sign * k_damping * lateral_error * abs(longitudinal_distance) / (distance + 0.01f);
+                        + lateral_sign * k_damping * lateral_error
+                          * abs(longitudinal_distance) / (distance + 0.01f);
 
-    // Limiter la vitesse angulaire désirée
-    if (forward) {
-        omega_desired = utils::getMin(utils::getMax(omega_desired, -config::MAX_ANGULAR_VELOCITY_RAD_S), config::MAX_ANGULAR_VELOCITY_RAD_S);
-    } else {
-        omega_desired = utils::getMax(utils::getMin(omega_desired, config::MAX_ANGULAR_VELOCITY_RAD_S), -config::MAX_ANGULAR_VELOCITY_RAD_S);
-    }
+    // Saturer ω_desired
+    omega_desired = utils::getMin(
+        utils::getMax(omega_desired, -config::MAX_ANGULAR_VELOCITY_RAD_S),
+        config::MAX_ANGULAR_VELOCITY_RAD_S);
 
     // Lisser l'accélération angulaire
     float omega = m_angularSpeedMotor;
-    float omega_diff = omega_desired - omega;
-    float max_omega_change = config::ANGULAR_ACCELERATION_RAD_S2 * (m_dt / (float)1e6);
-    if (abs(omega_diff) > max_omega_change) {
+    float const omega_diff      = omega_desired - omega;
+    float const max_omega_change = config::ANGULAR_ACCELERATION_RAD_S2 * dt_s;
+    if (abs(omega_diff) > max_omega_change)
         omega += utils::sign(omega_diff) * max_omega_change;
-    } else {
+    else
         omega = omega_desired;
-    }
 
-    // Distance restante utile le long de la trajectoire.
-    // `longitudinal_distance` est toujours négative tant que la cible n'est pas atteinte
-    // (angle_cible pointe vers la cible, donc le robot est « derrière » elle).
-    // La formule est identique en marche avant et en marche arrière.
-    float remaining_distance = utils::getMax(-longitudinal_distance, 0.0f);
+    // ================================================================
+    // 3. CONTRÔLE LINÉAIRE — profil S-curve
+    //    (jerk limité, accélération / décélération asymétriques)
+    // ================================================================
+    float const a_acc   = config::LINEAR_ACCELERATION_M_S2;   // accélération max
+    float const a_dec   = config::LINEAR_DECCELERATION_M_S2;  // décélération max
+    float const j_max   = config::LINEAR_JERK_M_S3;           // jerk max (accel ET decel)
+    float const v_limit = config::MAX_LINEAR_VELOCITY_M_S;    // vitesse linéaire max
 
-    // Distance de freinage avec prise en compte du jerk.
-    // Avec profil trapézoïdal en accélération (jerk limité) :
-    //   d_frein = v²/(2a) + v*a/(2j)
-    // Le terme v*a/(2j) représente la distance supplémentaire parcourue
-    // pendant que la décélération monte en rampe de 0 à a_max.
-    float const a_max = config::LINEAR_ACCELERATION_M_S2;
-    float const j_max = config::LINEAR_JERK_M_S3;
-    float const braking_margin = utils::getMax(remaining_distance - config::GO_MISSION_TOLERANCE_M*0.5, 0.0f);
+    // --- 3a. Vitesse max admissible pour freiner à temps ----------------
+    // Distance de freinage (profil trapézoïdal en accélération, jerk limité) :
+    //   d = v²/(2·a_dec) + v·a_dec/(2·j)
+    // Résolution de l'équation quadratique pour v :
+    //   (1/(2·a_dec))·v² + (a_dec/(2·j))·v − d = 0
+    float const braking_margin = utils::getMax(
+        remaining_distance - config::GO_MISSION_TOLERANCE_M * 0.5f, 0.0f);
+    float const A_b  = 1.0f / (2.0f * a_dec);
+    float const B_b  = a_dec / (2.0f * j_max);
+    float const disc = B_b * B_b + 4.0f * A_b * braking_margin;
+    float v_max_braking;
+    if (disc > 0.0f)
+        v_max_braking = (-B_b + sqrt(disc)) / (2.0f * A_b);
+    else
+        v_max_braking = 0.0f;
+    v_max_braking = utils::getMin(v_max_braking, v_limit);
 
-    // Résoudre la vitesse max admissible pour freiner sur braking_margin
-    // d = v²/(2a) + v*a/(2j)  =>  (1/(2a)) v² + (a/(2j)) v - d = 0
-    // Coefficients : A = 1/(2a), B = a/(2j), C = -d
-    // v = (-B + sqrt(B² + 4*A*d)) / (2*A)
-    float const A = 1.0f / (2.0f * a_max);
-    float const B = a_max / (2.0f * j_max);
-    float const discriminant = B * B + 4.0f * A * braking_margin;
-    float v_max;
-    if (discriminant > 0.0f) {
-        v_max = (-B + sqrt(discriminant)) / (2.0f * A);
-    } else {
-        v_max = 0.0f;
-    }
-    v_max = utils::getMin(v_max, config::MAX_LINEAR_VELOCITY_M_S);
-    float const v_max_braking = v_max; // limite dure pour la distance de freinage
-
-    // Réduire aussi la vitesse si l'erreur latérale ou angulaire est importante.
-    // Utilisé uniquement comme cible douce (via le jerk limiter) pour éviter
-    // les à-coups si l'erreur de cap fluctue légèrement.
+    // --- 3b. Réduction douce pour erreur de cap / latérale --------------
     float const heading_slowdown = 1.0f / (1.0f + 2.0f * abs(theta_error));
     float const lateral_slowdown = 1.0f / (1.0f + 4.0f * abs(lateral_error));
-    float const v_max_soft = v_max * utils::getMax(0.2f, heading_slowdown * lateral_slowdown);
+    float const v_max_soft = v_max_braking
+                           * utils::getMax(0.2f, heading_slowdown * lateral_slowdown);
 
-    // Vitesse cible signée (cible douce)
+    // Vitesse cible signée (cible douce pour le jerk limiter)
     float const target_speed = forward ? v_max_soft : -v_max_soft;
 
-    // Accélération désirée : proportionnelle à l'écart de vitesse,
-    // saturée à ±a_max. Ceci gère symétriquement accélération et décélération.
-    float const v_error = target_speed - m_linearSpeedMotor;
-    float const kp_accel = 10.0f; // gain pour convertir erreur de vitesse en consigne d'accélération
-    float accel_desired = utils::getMin(utils::getMax(kp_accel * v_error, -a_max), a_max);
-
-    // Limiter le jerk (variation de l'accélération) symétriquement
-    // en accélération ET en décélération
-    float const dt_s = m_dt / (float)1e6;
-    float const max_jerk_change = j_max * dt_s;
-    float accel_diff = accel_desired - m_currentLinearAccel;
-    if (abs(accel_diff) > max_jerk_change) {
-        m_currentLinearAccel += utils::sign(accel_diff) * max_jerk_change;
+    // --- 3c. Limites d'accélération asymétriques ------------------------
+    // En marche avant  : accel > 0 → accélération, accel < 0 → décélération
+    // En marche arrière : accel < 0 → accélération, accel > 0 → décélération
+    float a_pos_limit, a_neg_limit;
+    if (forward) {
+        a_pos_limit =  a_acc;   // accélération (v augmente)
+        a_neg_limit = -a_dec;   // décélération (v diminue)
     } else {
-        m_currentLinearAccel = accel_desired;
+        a_pos_limit =  a_dec;   // décélération (|v| diminue)
+        a_neg_limit = -a_acc;   // accélération (|v| augmente)
     }
 
-    // Limiter l'accélération courante à ±a_max
-    m_currentLinearAccel = utils::getMin(utils::getMax(m_currentLinearAccel, -a_max), a_max);
+    // --- 3d. Consigne d'accélération (P sur l'erreur de vitesse) --------
+    float const v_error  = target_speed - m_linearSpeedMotor;
+    float const kp_accel = 10.0f;
+    float accel_desired  = kp_accel * v_error;
+    accel_desired = utils::getMin(utils::getMax(accel_desired, a_neg_limit), a_pos_limit);
 
-    // Appliquer l'accélération lissée pour calculer la nouvelle vitesse
+    // --- 3e. Jerk limiter — variation de l'accélération bornée ----------
+    float const max_jerk_change = j_max * dt_s;
+    float const accel_diff = accel_desired - m_currentLinearAccel;
+    if (abs(accel_diff) > max_jerk_change)
+        m_currentLinearAccel += utils::sign(accel_diff) * max_jerk_change;
+    else
+        m_currentLinearAccel = accel_desired;
+
+    // Saturer aux limites asymétriques
+    m_currentLinearAccel = utils::getMin(
+        utils::getMax(m_currentLinearAccel, a_neg_limit), a_pos_limit);
+
+    // --- 3f. Intégration de la vitesse ----------------------------------
     float v = m_linearSpeedMotor + m_currentLinearAccel * dt_s;
 
-    // Contraindre la vitesse : limites absolues ET profil de freinage (v_max)
-    // v_max intègre déjà MAX_LINEAR_VELOCITY_M_S, ce clamp assure que le robot
-    // ne dépasse jamais la vitesse admissible pour freiner à temps (déplacements courts).
+    // --- 3g. Clamp dur — distance de freinage + direction ---------------
     if (forward) {
         v = utils::getMax(v, 0.0f);
-        v = utils::getMin(v, v_max_braking); // clamp dur : distance de freinage uniquement
+        v = utils::getMin(v, v_max_braking);
     } else {
         v = utils::getMin(v, 0.0f);
         v = utils::getMax(v, -v_max_braking);
     }
-    // Resynchroniser m_currentLinearAccel avec la vitesse réellement appliquée,
-    // pour éviter que l'état interne du jerk limiter reste en avance sur la réalité.
+
+    // --- 3h. Resynchroniser l'état d'accélération -----------------------
+    // Évite que le jerk limiter reste en avance sur la vitesse réellement appliquée
     if (dt_s > 1e-9f) {
         float const implied_accel = (v - m_linearSpeedMotor) / dt_s;
-        m_currentLinearAccel = utils::getMin(utils::getMax(implied_accel, -a_max), a_max);
+        m_currentLinearAccel = utils::getMin(
+            utils::getMax(implied_accel, a_neg_limit), a_pos_limit);
     }
 
-    // Arrêt final seulement quand il ne reste quasiment plus rien à parcourir.
+    // ================================================================
+    // 4. ARRÊT FINAL
+    // ================================================================
     if (remaining_distance < config::GO_MISSION_TOLERANCE_M / 4.0f && abs(v) < 0.02f) {
-        v = 0.0;
-        omega = 0.0;
-        m_currentLinearAccel = 0.0;
+        v     = 0.0f;
+        omega = 0.0f;
+        m_currentLinearAccel = 0.0f;
     }
 
-    if (remaining_distance < 2 * config::GO_MISSION_TOLERANCE_M) {
-        // Ramener omega vers 0 progressivement pour éviter un à-coup latéral
+    // Près de la cible : ramener ω vers 0 progressivement
+    if (remaining_distance < 2.0f * config::GO_MISSION_TOLERANCE_M) {
         float const max_omega_final = config::ANGULAR_ACCELERATION_RAD_S2 * dt_s;
         if (abs(omega) > max_omega_final)
             omega -= utils::sign(omega) * max_omega_final;
@@ -389,7 +403,7 @@ void Robot::samsonUpdateMotors()
             omega = 0.0f;
     }
 
-    m_linearSpeedMotor = v;
+    m_linearSpeedMotor  = v;
     m_angularSpeedMotor = omega;
     setSpeeds(v, omega);
 }
