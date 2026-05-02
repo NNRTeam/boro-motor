@@ -35,7 +35,7 @@ def _gen_id() -> int:
 	return int(time.time() * 1000) & 0x7FFFFFFF
 
 
-def _format_mission_message(id_: int, type_int: int, status_int: int = 0, options: int = 0, direction: int = 1,
+def _format_mission_message(id_: int, type_int: int, status_int: int = 0, options: int = 0, direction: int = 0,
 							tx: float = 0.0, ty: float = 0.0, ttheta: float = 0.0) -> str:
 	# Use '.' as decimal separator, keep floats compact
 	return f"{id_};{type_int};{status_int};{options};{direction};{tx:.6g};{ty:.6g};{ttheta:.6g}F"
@@ -192,7 +192,7 @@ def oneTurn():
 
 if __name__ == '__main__':
 	reset()
-	go(-1.0, 0.0)
+	go(1.0, 0.0)
 
 	#go(1.0, 0.0)
 	#turn(90)

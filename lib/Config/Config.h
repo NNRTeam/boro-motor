@@ -44,7 +44,9 @@ namespace config {
     float constexpr MAX_LINEAR_VELOCITY_M_S = 0.5f;    // Maximum linear velocity in metter per second
     float constexpr MAX_ANGULAR_VELOCITY_RAD_S = 3.5f;    // Maximum angular velocity in radians per second
 
-    float constexpr LINEAR_ACCELERATION_M_S2 = 0.5f;      // Linear acceleration in metter per second squared
+    float constexpr LINEAR_ACCELERATION_M_S2 = 0.4f;      // Linear acceleration in metter per second squared
+    float constexpr LINEAR_DECCELERATION_M_S2 = 0.25f;     // Linear deceleration in meters per second squared
+
     float constexpr ANGULAR_ACCELERATION_RAD_S2 = 3.0f;     // Angular acceleration in radians per second squared
 
     float constexpr LINEAR_JERK_M_S3 = 0.8f;              // Linear jerk (rate of change of acceleration) in m/s^3
@@ -54,8 +56,8 @@ namespace config {
 
     // SOFTWARE CONFIGURATION
 
-    float constexpr CONTROL_LOOP_FREQUENCY_HZ = 25.0f; // Control loop frequency in Hertz
-    float constexpr MOTOR_TIMER_FREQUENCY_HZ = 2500.0f; // Hardware timer frequency for motor stepping (Hz)
+    float constexpr CONTROL_LOOP_FREQUENCY_HZ = 100.0f; // Control loop frequency in Hertz
+    float constexpr MOTOR_TIMER_FREQUENCY_HZ = 20000.0f; // Hardware timer frequency for motor stepping (Hz)
     float constexpr ODOM_MEASURE_FREQUENCY_HZ = 15.0f; // Odometry measurement frequency in Hertz
     float constexpr ODOM_FREQUENCY_HZ = 10.0f; // Control loop frequency in Hertz
 
