@@ -3,6 +3,7 @@
 
 #include <Arduino.h>
 #include <Config.h>
+#include <FspTimer.h>
 #include <Logger/Logger.h>
 #include <missionManager/missionManager.h>
 #include <Robot/Motor.h>
@@ -23,6 +24,7 @@ class Robot
         [[nodiscard]] float getAngularSpeed() const { if (config::MOTOR_ODOM_ONLY) return m_angularSpeedMotor; else return m_angularSpeed; }
         static void leftMotorStepNotify(bool forward);
         static void rightMotorStepNotify(bool forward);
+        static void stepTimerISR(timer_callback_args_t *p_args);
         static Robot* instance;
 
     protected:
@@ -71,6 +73,7 @@ class Robot
         volatile long m_leftStepCount = 0;
         volatile long m_rightStepCount = 0;
     private:
+        static FspTimer m_stepTimer;
         unsigned int m_dt1 = 0;
         unsigned int m_dt2 = 0;
         unsigned int m_dt = 1e6/config::CONTROL_LOOP_FREQUENCY_HZ;

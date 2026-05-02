@@ -33,21 +33,16 @@ Motor::Motor(int dirPin, int stepPin, int sensorCS, bool invertSensor, bool inve
 
 void Motor::run()
 {
-    if(m_speed == 0.0)
+    unsigned int ist = m_interStepTime; // local copy of volatile
+    if (ist == 0)
         return;
     unsigned long long int currentTime = micros();
-    unsigned int interStepTime = calculerTempsEntreSteps(abs(m_speed),
-                                                        config::STEP_PER_REVOLUTION,
-                                                        config::MICROSTEPS);
-    if (currentTime - m_lastStepTime >= interStepTime)
+    if (currentTime - m_lastStepTime >= ist)
     {
         step();
-        // Report actual wheel forward direction based on motor inversion
-        bool wheelForward = (m_speed > 0) != m_is_motor_inverted;
-        m_stepCallback(wheelForward);
+        m_stepCallback(m_cachedWheelForward);
         m_lastStepTime = currentTime;
     }
-
 }
 
 void Motor::setLinearSpeed(float speed)
@@ -63,6 +58,16 @@ void Motor::setSpeed(float speed)
         digitalWrite(PIN_DIR, LOW);
     else
         digitalWrite(PIN_DIR, HIGH);
+
+    // Pre-compute ISR fields: direction first, then interval (order matters
+    // so the ISR never steps with a stale direction).
+    m_cachedWheelForward = (speed > 0) != m_is_motor_inverted;
+    if (speed == 0.0f) {
+        m_interStepTime = 0;
+    } else {
+        m_interStepTime = calculerTempsEntreSteps(
+            abs(speed), config::STEP_PER_REVOLUTION, config::MICROSTEPS);
+    }
 }
 
 void Motor::step()

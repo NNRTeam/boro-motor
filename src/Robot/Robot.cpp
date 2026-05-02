@@ -4,6 +4,7 @@
 #include <Config.h>
 
 Robot* Robot::instance = nullptr;
+FspTimer Robot::m_stepTimer;
 
 Robot::Robot(Logger& logger, missionManager *missionManager) : m_logger(logger), m_missionManager(missionManager)
 {
@@ -44,13 +45,32 @@ Robot::Robot(Logger& logger, missionManager *missionManager) : m_logger(logger),
                                 Robot::rightMotorStepNotify);
     }
     Robot::instance = this;
+
+    // Setup hardware timer for motor stepping at high frequency
+    // so that Control() latency does not cause missed steps.
+    uint8_t timerType;
+    int8_t timerCh = FspTimer::get_available_timer(timerType);
+    if (timerCh >= 0) {
+        m_stepTimer.begin(TIMER_MODE_PERIODIC, timerType, timerCh,
+                          config::MOTOR_TIMER_FREQUENCY_HZ, 0.0f,
+                          Robot::stepTimerISR);
+        m_stepTimer.setup_overflow_irq();
+        m_stepTimer.open();
+        m_stepTimer.start();
+    }
+}
+
+void Robot::stepTimerISR(timer_callback_args_t __attribute__((unused)) *p_args)
+{
+    if (instance) {
+        instance->motor_left->run();
+        instance->motor_right->run();
+    }
 }
 
 void Robot::run() {
-    // Appeler run() en premier pour minimiser la latence entre deux steps,
-    // indépendamment du temps pris par Control().
-    motor_left->run();
-    motor_right->run();
+    // Motor stepping is now handled by the hardware timer ISR.
+    // Only run the control loop here.
     Control();
 }
 
