@@ -73,6 +73,11 @@ void Motor::step()
 }
 
 float Motor::getFeedbackSpeed(unsigned int *dt, unsigned int *t){
+    if (m_sensor == nullptr) {
+        *dt = 0;
+        *t = micros();
+        return 0.0f;
+    }
     float mesuredSpeed = m_sensor->getSpeed(dt, t)*m_WheelPerimeter/(2*PI);
     m_dt = *dt;
     m_t = *t;

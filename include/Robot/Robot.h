@@ -10,7 +10,7 @@
 class Robot
 {
     public:
-        Robot(Logger logger, missionManager* missionManager);
+        Robot(Logger& logger, missionManager* missionManager);
 
         void run();
         void resetOdometry();
@@ -36,7 +36,7 @@ class Robot
         bool checkMissionArrived();
         void setEmergencyStopMotorSpeed();
 
-        Logger m_logger;
+        Logger& m_logger;
 
         float x = 0.0; //m
         float y = 0.0; //m

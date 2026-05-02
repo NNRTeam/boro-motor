@@ -31,6 +31,15 @@ class Mission
             BACKWARD = 1
         };
 
+        Mission()
+            : id(-1),
+              type(Type::NONE),
+              options(Options::NONE),
+              direction(Direction::FORWARD),
+              target_x(0.0f),
+              target_y(0.0f),
+              target_theta(0.0f) {}
+
         Mission(
             int id,
             Type type,

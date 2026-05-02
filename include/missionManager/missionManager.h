@@ -2,8 +2,8 @@
 #define MISSIONMANAGER_H
 
 #include <Arduino.h>
-#include <vector>
 #include <missionManager/mission.h>
+#include <missionManager/MissionQueue.h>
 #include <Logger/Logger.h>
 
 class missionManager
@@ -11,23 +11,23 @@ class missionManager
 public:
     missionManager(Logger& logger);
 
-    void addMission(Mission const &mission);
+    bool addMission(Mission const &mission);
     void clearMissions();
     [[nodiscard]] bool removeMission(Mission &mission);
     [[nodiscard]] Mission* getCurrentMission();
     void endCurrentMission();
     Mission* startNextMission();
     [[nodiscard]] Mission* getMissionById(int id);
-    [[nodiscard]] size_t getMissionCount() const;
+    [[nodiscard]] int getMissionCount() const;
     [[nodiscard]] bool hasMissions() const;
     [[nodiscard]] bool hasActiveMissions();
     [[nodiscard]] Mission::Type getCurrentMissionType() const;
-    [[nodiscard]] Mission* parseMissionMessage(String const &message);
+    [[nodiscard]] bool parseMissionMessage(String const &message, Mission &outMission);
     void cancelAllMissions();
 
     void addFakeMissionForTest();
 protected:
-    std::vector<Mission> missions;
+    MissionQueue missions;
 
 private:
     Logger& m_logger;

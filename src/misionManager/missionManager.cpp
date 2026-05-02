@@ -1,11 +1,10 @@
 #include "missionManager/missionManager.h"
 #include <Utils.h>
-#include <algorithm>
 
 missionManager::missionManager(Logger& logger): m_logger(logger){
 }
 
-void missionManager::addMission(Mission const &mission)
+bool missionManager::addMission(Mission const &mission)
 {
     m_logger.info("Adding mission ID: " + String(mission.getId()) +
                 " Type: " + Mission::typeToString(mission.getType()));
@@ -13,22 +12,27 @@ void missionManager::addMission(Mission const &mission)
     {
         m_logger.info("STOP mission received. Clearing all missions.");
         clearMissions();
-        return;
+        return true;
     }
     else if (mission.getType() == Mission::Type::RESUME)
     {
-        if (getCurrentMission()->getType() == Mission::Type::WAIT)
+        Mission* current = getCurrentMission();
+        if (current != nullptr && current->getType() == Mission::Type::WAIT)
         {
             endCurrentMission();
             startNextMission();
         }
         else
         {
-            m_logger.warn("RESUME mission received but current mission is not WAIT.");
+            m_logger.warn("RESUME mission received but current mission is not WAIT (or no current mission).");
         }
-        return;
+        return true;
     }
-    missions.push_back(mission);
+    if (!missions.push(mission)) {
+        m_logger.error("Mission queue full, cannot add mission ID: " + String(mission.getId()));
+        return false;
+    }
+    return true;
 }
 
 void missionManager::clearMissions()
@@ -38,14 +42,17 @@ void missionManager::clearMissions()
 
 [[nodiscard]] bool missionManager::removeMission(Mission &mission)
 {
-    auto it = std::find(missions.begin(), missions.end(), mission);
-    if (it != missions.end())
-    {
-        for (auto &mission: missions)
-        {
-            mission.setStatus(Mission::Status::CANCELED);
+    // Chercher si la mission existe dans la queue
+    bool found = false;
+    for (int i = 0; i < missions.size(); ++i) {
+        if (*missions.at(i) == mission) {
+            found = true;
+            break;
         }
-        missions.clear();
+    }
+    if (found)
+    {
+        cancelAllMissions();
         return true;
     }
     return false;
@@ -53,22 +60,17 @@ void missionManager::clearMissions()
 
 [[nodiscard]] Mission* missionManager::getCurrentMission()
 {
-    if (missions.empty())
-        return nullptr;
-    return &missions.front();
+    return missions.front();
 }
 
 void missionManager::endCurrentMission()
 {
     if (hasActiveMissions())
     {
-        auto *currentMission = getCurrentMission();
+        Mission* currentMission = getCurrentMission();
         currentMission->setStatus(Mission::Status::FINISHED);
         m_logger.info("Ending mission ID: " + String(currentMission->getId()));
-        auto it = std::find(missions.begin(), missions.end(), *currentMission);
-        if (it != missions.end()) {
-            missions.erase(it);
-        }
+        missions.pop();
     }
 }
 
@@ -77,7 +79,7 @@ Mission* missionManager::startNextMission()
     if (missions.empty())
         return nullptr;
 
-    auto *currentMission = getCurrentMission();
+    Mission* currentMission = getCurrentMission();
     currentMission->setStatus(Mission::Status::STARTED);
     m_logger.info("Starting mission ID: " + String(currentMission->getId()));
     return currentMission;
@@ -85,17 +87,16 @@ Mission* missionManager::startNextMission()
 
 [[nodiscard]] Mission* missionManager::getMissionById(int id)
 {
-    for (auto &mission : missions)
+    for (int i = 0; i < missions.size(); ++i)
     {
-        if (mission.getId() == id)
-        {
-            return &mission;
-        }
+        Mission* m = missions.at(i);
+        if (m->getId() == id)
+            return m;
     }
     return nullptr;
 }
 
-[[nodiscard]] size_t missionManager::getMissionCount() const
+[[nodiscard]] int missionManager::getMissionCount() const
 {
     return missions.size();
 }
@@ -107,8 +108,7 @@ Mission* missionManager::startNextMission()
 
 [[nodiscard]] bool missionManager::hasActiveMissions()
 {
-    bool const hasActiveMissions = !missions.empty() && getCurrentMission()->isActive();
-    return hasActiveMissions;
+    return !missions.empty() && missions.front()->isActive();
 }
 
 [[nodiscard]] Mission::Type missionManager::getCurrentMissionType() const
@@ -116,47 +116,62 @@ Mission* missionManager::startNextMission()
     if (missions.empty())
         return Mission::Type::NONE;
 
-    return missions.front().getType();
+    return missions.front()->getType();
 }
 
-[[nodiscard]] Mission* missionManager::parseMissionMessage(String const &message)
+[[nodiscard]] bool missionManager::parseMissionMessage(String const &message, Mission &outMission)
 {
     // message format: "{ID};{TYPE_INT};{STATUS_INT};{OPTION_INT};{DIRECTION_INT};{TARGET_X_FLOAT};{TARGET_Y_FLOAT};{TARGET_THETA_FLOAT}"
-    auto parts = std::vector<String>();
-    int start = 0;
-    for (size_t i = 0; i < message.length(); ++i)
+    // Parse sans allocation dynamique : on cherche les positions des ';'
+    int separators[7];
+    int sepCount = 0;
+    for (size_t i = 0; i < message.length() && sepCount < 7; ++i)
     {
         if (message.charAt(i) == ';')
-        {
-            parts.push_back(message.substring(start, i));
-            start = i + 1;
-        }
+            separators[sepCount++] = i;
     }
-    parts.push_back(message.substring(start));
-    if (parts.size() != 8)
+    if (sepCount != 7)
     {
         m_logger.error("Invalid mission message format: " + message);
-        return nullptr;
+        return false;
     }
-    int id = parts[0].toInt();
-    Mission::Type type = static_cast<Mission::Type>(parts[1].toInt());
-    Mission::Status status = static_cast<Mission::Status>(parts[2].toInt());
-    Mission::Options options = static_cast<Mission::Options>(parts[3].toInt());
-    Mission::Direction direction = static_cast<Mission::Direction>(parts[4].toInt());
-    float target_x = parts[5].toFloat();
-    float target_y = parts[6].toFloat();
-    float target_theta = parts[7].toFloat();
-    Mission* mission = new Mission(id, type, options, direction, target_x, target_y, target_theta);
-    mission->setStatus(status);
-    return mission;
+
+    int id = message.substring(0, separators[0]).toInt();
+    int typeInt = message.substring(separators[0] + 1, separators[1]).toInt();
+    int statusInt = message.substring(separators[1] + 1, separators[2]).toInt();
+    int optionsInt = message.substring(separators[2] + 1, separators[3]).toInt();
+    int directionInt = message.substring(separators[3] + 1, separators[4]).toInt();
+    float target_x = message.substring(separators[4] + 1, separators[5]).toFloat();
+    float target_y = message.substring(separators[5] + 1, separators[6]).toFloat();
+    float target_theta = message.substring(separators[6] + 1).toFloat();
+
+    // Validation des valeurs d'enum
+    if (typeInt < 0 || typeInt > 5) {
+        m_logger.error("Invalid mission type: " + String(typeInt));
+        return false;
+    }
+    if (statusInt < 0 || statusInt > 4) {
+        m_logger.error("Invalid mission status: " + String(statusInt));
+        return false;
+    }
+
+    outMission = Mission(
+        id,
+        static_cast<Mission::Type>(typeInt),
+        static_cast<Mission::Options>(optionsInt),
+        static_cast<Mission::Direction>(directionInt),
+        target_x, target_y, target_theta
+    );
+    outMission.setStatus(static_cast<Mission::Status>(statusInt));
+    return true;
 }
 
 void missionManager::cancelAllMissions()
 {
-    for (auto &mission: missions)
-        mission.setStatus(Mission::Status::CANCELED);
-
-    missions.clear();
+    while (!missions.empty()) {
+        missions.front()->setStatus(Mission::Status::CANCELED);
+        missions.pop();
+    }
 }
 
 void missionManager::addFakeMissionForTest()

@@ -47,9 +47,11 @@ void SerialClient::receiveData() {
     }
     else
     {
-        Mission* mission = m_missionManager->parseMissionMessage(receivedData);
-        m_missionManager->addMission(*mission);
-        m_robot->emergencyStop(false);
+        Mission mission;
+        if (m_missionManager->parseMissionMessage(receivedData, mission)) {
+            m_missionManager->addMission(mission);
+            m_robot->emergencyStop(false);
+        }
     }
 }
 

@@ -5,7 +5,7 @@
 
 Robot* Robot::instance = nullptr;
 
-Robot::Robot(Logger logger, missionManager *missionManager) : m_logger(logger), m_missionManager(missionManager)
+Robot::Robot(Logger& logger, missionManager *missionManager) : m_logger(logger), m_missionManager(missionManager)
 {
     pinMode(config::M_EN_PIN, OUTPUT);
     digitalWrite(config::M_EN_PIN, HIGH); // free motors
@@ -118,11 +118,15 @@ void Robot::Control()
                 return;
             }
             else if (CurrentMission->isActive() == false) {
-                m_missionManager->startNextMission();
-                float const dx = m_missionManager->getCurrentMission()->getTargetX() - getX();
-                float const dy = m_missionManager->getCurrentMission()->getTargetY() - getY();
+                Mission* nextMission = m_missionManager->startNextMission();
+                if (nextMission == nullptr) {
+                    stop();
+                    return;
+                }
+                float const dx = nextMission->getTargetX() - getX();
+                float const dy = nextMission->getTargetY() - getY();
                 float const angle_cible = atan2(dy, dx);
-                m_missionManager->getCurrentMission()->setThetaGoTo(angle_cible);
+                nextMission->setThetaGoTo(angle_cible);
             }
 
             if (CurrentMission->getType() == Mission::Type::GO)
@@ -475,11 +479,13 @@ void Robot::rightMotorStepNotify(bool forward)
 
 void Robot::updateMotorOdometry()
 {
-    // Lire et remettre à zéro les compteurs de pas
+    // Lire et remettre à zéro les compteurs de pas (section critique)
+    noInterrupts();
     long leftSteps = m_leftStepCount;
     long rightSteps = m_rightStepCount;
-    m_leftStepCount -= leftSteps;
-    m_rightStepCount -= rightSteps;
+    m_leftStepCount = 0;
+    m_rightStepCount = 0;
+    interrupts();
 
     // Calculer la distance parcourue par chaque roue
     float const stepsPerRev = config::STEP_PER_REVOLUTION * config::MICROSTEPS;

@@ -30,7 +30,7 @@ class Motor{
 
         double m_WheelPerimeter;     //perimetre de la roue [mm]
 
-        HallSensor* m_sensor;
+        HallSensor* m_sensor = nullptr;
         bool m_is_sensor_inverted;
         bool m_is_motor_inverted;
 
