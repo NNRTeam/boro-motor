@@ -32,7 +32,7 @@ class Robot
         void updateOdometry();
         void updateMotorOdometry();
         void setSpeeds(float linearSpeed, float angularSpeed);
-        void samsonUpdateMotors();
+        void samsonUpdateMotors(Mission* mission);
         void rotationUpdateMotors();
         void stop();
         bool checkMissionArrived();

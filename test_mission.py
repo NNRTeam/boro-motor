@@ -106,6 +106,8 @@ def send_mission(command: str, backend: str = "serial", serial_port: Optional[st
 			payload = 'R'  # reset command single-letter; firmware detects this
 		elif head == 'DFU' or head == 'D':
 			payload = 'D'  # request DFU mode
+		elif head == 'STOP':
+			payload = 'L'
 		else:
 			raise MissionError(f"Commande inconnue ou format non supporté: {head}")
 
@@ -174,6 +176,9 @@ def reset():
     send_mission('RESET', backend='serial')
 
 def stop():
+    send_mission('RESET', backend='serial')
+
+def stop():
     send_mission('STOP', backend='serial')
 
 
@@ -191,11 +196,13 @@ def oneTurn():
 
 
 if __name__ == '__main__':
-	reset()
-	go(1.0, 0.0)
 
-	#go(1.0, 0.0)
-	#turn(90)
+	reset()
+	# stop()
+	#go(1.5, 0.0)
+
+	# go(1.0, 0.0)
+	# turn(90)
 	# go(1.0, 0.25)
 	# turn(180)
 	# go(0.0, 0.25)
@@ -208,10 +215,9 @@ if __name__ == '__main__':
 	# time.sleep(5)
 	# go(1.0, 0.0)
 	# turn(90)
-
 	
-	#oneTurn()
-
+	for i in range(5):
+		oneTurn()
 	#go(1.5, 0.0)
 
 	# for i in range(0, 3):

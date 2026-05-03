@@ -103,9 +103,11 @@ void Robot::Control()
 
     if (currentTime - m_lastControlTime >= 1e6/config::CONTROL_LOOP_FREQUENCY_HZ) {
         // Plafonner m_dt pour éviter une explosion au premier tick ou après une longue pause
-        unsigned long long elapsed = currentTime - m_lastControlTime;
-        unsigned int const maxDt = (unsigned int)(2.0f * 1e6f / config::CONTROL_LOOP_FREQUENCY_HZ);
-        m_dt = (elapsed > maxDt) ? maxDt : (unsigned int)elapsed;
+        
+        m_dt = (unsigned int)(currentTime - m_lastControlTime);
+        // unsigned long long elapsed = currentTime - m_lastControlTime;
+        // unsigned int const maxDt = (unsigned int)(2.0f * 1e6f / config::CONTROL_LOOP_FREQUENCY_HZ);
+        // m_dt = (elapsed > maxDt) ? maxDt : (unsigned int)elapsed;
         m_lastControlTime = currentTime;
         if (config::MOTOR_ODOM_ONLY) {
             updateMotorOdometry();
@@ -150,7 +152,7 @@ void Robot::Control()
             }
 
             if (CurrentMission->getType() == Mission::Type::GO)
-                samsonUpdateMotors();
+                samsonUpdateMotors(CurrentMission);
             else if (CurrentMission->getType() == Mission::Type::TURN)
                 rotationUpdateMotors();
             else if (CurrentMission->getType() == Mission::Type::STOP || CurrentMission->getType() == Mission::Type::WAIT)
@@ -235,11 +237,10 @@ void Robot::setEmergencyStopMotorSpeed()
     setSpeeds(m_linearSpeedMotor, m_angularSpeedMotor);
 }
 
-void Robot::samsonUpdateMotors()
+void Robot::samsonUpdateMotors(Mission* mission)
 {
     float const dt_s = m_dt / (float)1e6;
 
-    Mission* mission = m_missionManager->getCurrentMission();
     float const targetX     = mission->getTargetX();
     float const targetY     = mission->getTargetY();
     float const angle_cible = mission->getTargetTheta();
@@ -327,10 +328,11 @@ void Robot::samsonUpdateMotors()
     v_max_braking = utils::getMin(v_max_braking, v_limit);
 
     // --- 3b. Réduction douce pour erreur de cap / latérale --------------
-    float const heading_slowdown = 1.0f / (1.0f + 2.0f * abs(theta_error));
-    float const lateral_slowdown = 1.0f / (1.0f + 4.0f * abs(lateral_error));
+    // Facteurs très progressifs pour ne pas créer d'à-coups au début de la décélération
+    float const heading_slowdown = 1.0f / (1.0f + 0.3f * abs(theta_error));
+    float const lateral_slowdown = 1.0f / (1.0f + 0.4f * abs(lateral_error));
     float const v_max_soft = v_max_braking
-                           * utils::getMax(0.2f, heading_slowdown * lateral_slowdown);
+                           * utils::getMax(0.6f, heading_slowdown * lateral_slowdown);
 
     // Vitesse cible signée (cible douce pour le jerk limiter)
     float const target_speed = forward ? v_max_soft : -v_max_soft;
