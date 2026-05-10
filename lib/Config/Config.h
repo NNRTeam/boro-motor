@@ -24,8 +24,8 @@ namespace config {
 
     // MECHANICAL CONFIGURATION
 
-    float constexpr M1_WHEEL_DIAMETER_MM = 57.8f; // Motor Wheel diameter in millimeters
-    float constexpr M2_WHEEL_DIAMETER_MM = 57.8f; // Motor Wheel diameter in millimeters
+    float constexpr M1_WHEEL_DIAMETER_MM = 58.32f; // Motor Wheel diameter in millimeters
+    float constexpr M2_WHEEL_DIAMETER_MM = 58.32f; // Motor Wheel diameter in millimeters
 
     bool constexpr M1_INVERT_DIR = false; // Invert motor 1 direction (set true if wheel goes backward)
     bool constexpr M2_INVERT_DIR = true;  // Invert motor 2 direction (set true if wheel goes backward)
@@ -33,7 +33,7 @@ namespace config {
     float constexpr OD1_WHEEL_DIAMETER_MM = 50.0f; // Odom Wheel diameter in millimeters
     float constexpr OD2_WHEEL_DIAMETER_MM = 50.0f; // Odom Wheel diameter in millimeters
 
-    float constexpr M_WHEEL_BASE_MM = 168.0f;    // Distance between the two motors wheels in millimeters
+    float constexpr M_WHEEL_BASE_MM = 167.6275f;    // Distance between the two motors wheels in millimeters
     float constexpr OD_WHEEL_BASE_MM = 200.0f;   // Distance between the two odom wheels in millimeters
 
     // MOTION CONFIGURATION
@@ -45,13 +45,13 @@ namespace config {
     float constexpr MAX_ANGULAR_VELOCITY_RAD_S = 3.5f;    // Maximum angular velocity in radians per second
 
     float constexpr LINEAR_ACCELERATION_M_S2 = 0.5f;      // Linear acceleration in metter per second squared
-    float constexpr LINEAR_DECCELERATION_M_S2 = 0.3f;     // Linear deceleration in meters per second squared
+    float constexpr LINEAR_DECCELERATION_M_S2 = 0.4f;     // Linear deceleration in meters per second squared
 
     float constexpr ANGULAR_ACCELERATION_RAD_S2 = 3.0f;     // Angular acceleration in radians per second squared
 
-    float constexpr LINEAR_JERK_M_S3 = 0.6f;              // Linear jerk (rate of change of acceleration) in m/s^3
+    float constexpr LINEAR_JERK_M_S3 = 0.7f;              // Linear jerk (rate of change of acceleration) in m/s^3
 
-    float constexpr LINEAR_EMERGENCY_MAX_DECELEATION = 3.0;
+    float constexpr LINEAR_EMERGENCY_MAX_DECELEATION = 3.0f;
     float constexpr ANGULAR_EMERGENCY_MAX_DECELEATION = 9.0f;
 
     // SOFTWARE CONFIGURATION

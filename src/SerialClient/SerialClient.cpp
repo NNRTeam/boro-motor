@@ -9,12 +9,12 @@ void SerialClient::run()
 {
     receiveData();
     unsigned long long int const current_time = micros();
-    if (current_time - m_last_odom_send > 1e6/config::ODOM_FREQUENCY_HZ)
+    if (m_odomPending || current_time - m_last_odom_send > 1e6/config::ODOM_FREQUENCY_HZ)
     {
+        m_odomPending = false;
         m_last_odom_send = current_time;
         sendData();
     }
-
 }
 
 void SerialClient::receiveData() {
@@ -84,13 +84,36 @@ void writeUint32(uint32_t value) {
     Serial.write((uint8_t)value);         // Octet le moins significatif
 }
 
+// Fast float-to-buffer append (avoids snprintf overhead on RA4M1)
+static char* appendFloat(char* p, float val, signed char width, unsigned char prec) {
+    dtostrf(val, width, prec, p);
+    while (*p) p++;
+    return p;
+}
+
 void SerialClient::sendData() {
-    //Mission* currentMission = m_missionManager->getCurrentMission();
     float const x = m_robot->getX();
     float const y = m_robot->getY();
     float const theta = m_robot->getTheta();
     float const vl = m_robot->getLinearSpeed();
     float const vr = m_robot->getAngularSpeed();
-    String d = "O" + String(x) + ";" + String(y) + ";" + String(theta) + ";" + String(vl) + ";" + String(vr) + "F";
-    Serial.println(d);
+
+    // Build packet in stack buffer without any heap allocation.
+    // dtostrf is ~5x faster than snprintf for floats on this MCU.
+    char buf[64];
+    char* p = buf;
+    *p++ = 'O';
+    p = appendFloat(p, x, 1, 2);  *p++ = ';';
+    p = appendFloat(p, y, 1, 2);  *p++ = ';';
+    p = appendFloat(p, theta, 1, 2); *p++ = ';';
+    p = appendFloat(p, vl, 1, 2); *p++ = ';';
+    p = appendFloat(p, vr, 1, 2);
+    *p++ = 'F'; *p++ = '\n'; *p = '\0';
+
+    int len = (int)(p - buf);
+    // Only send if full packet fits in TX buffer; otherwise retry next loop
+    if (Serial.availableForWrite() >= len)
+        Serial.write(buf, len);
+    else
+        m_odomPending = true;
 }

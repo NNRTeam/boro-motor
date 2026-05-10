@@ -103,11 +103,9 @@ void Robot::Control()
 
     if (currentTime - m_lastControlTime >= 1e6/config::CONTROL_LOOP_FREQUENCY_HZ) {
         // Plafonner m_dt pour éviter une explosion au premier tick ou après une longue pause
-        
-        m_dt = (unsigned int)(currentTime - m_lastControlTime);
-        // unsigned long long elapsed = currentTime - m_lastControlTime;
-        // unsigned int const maxDt = (unsigned int)(2.0f * 1e6f / config::CONTROL_LOOP_FREQUENCY_HZ);
-        // m_dt = (elapsed > maxDt) ? maxDt : (unsigned int)elapsed;
+        unsigned long long elapsed = currentTime - m_lastControlTime;
+        unsigned int const maxDt = (unsigned int)(2.0f * 1e6f / config::CONTROL_LOOP_FREQUENCY_HZ);
+        m_dt = (elapsed > maxDt) ? maxDt : (unsigned int)elapsed;
         m_lastControlTime = currentTime;
         if (config::MOTOR_ODOM_ONLY) {
             updateMotorOdometry();
@@ -317,8 +315,12 @@ void Robot::samsonUpdateMotors(Mission* mission)
     //   (1/(2·a_dec))·v² + (a_dec/(2·j))·v − d = 0
     float const braking_margin = utils::getMax(
         remaining_distance - config::GO_MISSION_TOLERANCE_M * 0.5f, 0.0f);
-    float const A_b  = 1.0f / (2.0f * a_dec);
-    float const B_b  = a_dec / (2.0f * j_max);
+    // Use conservative deceleration for planning to account for S-curve
+    // controller lag (jerk ramp-up delay). This makes deceleration start
+    // earlier, giving the jerk limiter time to ramp up smoothly.
+    float const a_dec_plan = a_dec * 0.5f;
+    float const A_b  = 1.0f / (2.0f * a_dec_plan);
+    float const B_b  = a_dec_plan / (2.0f * j_max);
     float const disc = B_b * B_b + 4.0f * A_b * braking_margin;
     float v_max_braking;
     if (disc > 0.0f)
@@ -370,21 +372,15 @@ void Robot::samsonUpdateMotors(Mission* mission)
     // --- 3f. Intégration de la vitesse ----------------------------------
     float v = m_linearSpeedMotor + m_currentLinearAccel * dt_s;
 
-    // --- 3g. Clamp dur — distance de freinage + direction ---------------
+    // --- 3g. Clamp direction uniquement (pas de clamp sur v_max_braking) -
+    // Le freinage est entièrement géré par le profil S-curve (étapes 3d-3e).
+    // On empêche seulement l'inversion de sens et le dépassement de v_limit.
     if (forward) {
         v = utils::getMax(v, 0.0f);
-        v = utils::getMin(v, v_max_braking);
+        v = utils::getMin(v, v_limit);
     } else {
         v = utils::getMin(v, 0.0f);
-        v = utils::getMax(v, -v_max_braking);
-    }
-
-    // --- 3h. Resynchroniser l'état d'accélération -----------------------
-    // Évite que le jerk limiter reste en avance sur la vitesse réellement appliquée
-    if (dt_s > 1e-9f) {
-        float const implied_accel = (v - m_linearSpeedMotor) / dt_s;
-        m_currentLinearAccel = utils::getMin(
-            utils::getMax(implied_accel, a_neg_limit), a_pos_limit);
+        v = utils::getMax(v, -v_limit);
     }
 
     // ================================================================
@@ -462,7 +458,7 @@ bool Robot::checkMissionArrived()
         float const longitudinal_distance = (getX() - currentMission->getTargetX()) * cos(angle_cible)
                                            + (getY() - currentMission->getTargetY()) * sin(angle_cible);
         float const remaining_distance = utils::getMax(-longitudinal_distance, 0.0f);
-        if (remaining_distance < config::GO_MISSION_TOLERANCE_M) {
+        if (remaining_distance < config::GO_MISSION_TOLERANCE_M && abs(m_linearSpeedMotor) < 0.05f) {
             m_missionManager->endCurrentMission();
             m_angularSpeedMotor = 0.0;
             m_linearSpeedMotor = 0.0;

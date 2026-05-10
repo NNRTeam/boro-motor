@@ -10,7 +10,7 @@
 class MissionQueue
 {
 public:
-    static constexpr int MAX_MISSIONS = 20;
+    static constexpr int MAX_MISSIONS = 200;
 
     MissionQueue() : m_head(0), m_tail(0), m_count(0) {}
 

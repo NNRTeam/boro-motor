@@ -166,8 +166,10 @@ def resume():
 def wait():
 	send_mission('WAIT', backend='serial')
 
-def go(x: float, y: float):
-	send_mission(f'GO {x} {y}', backend='serial')
+def go(x: float, y: float, forward: bool = True):
+	direction = 0 if forward else 1
+	payload = _format_mission_message(_gen_id(), 0, direction=direction, tx=x, ty=y)
+	send_mission(payload, backend='serial')
 
 def turn(angle: float):
 	send_mission(f'TURN {angle}', backend='serial')
@@ -198,8 +200,14 @@ def oneTurn():
 if __name__ == '__main__':
 
 	reset()
-	# stop()
-	#go(1.5, 0.0)
+	#stop()
+	
+	for i in range(5):
+		go(1.0, 0.0, forward=True)
+		go(0.0, 0.0, forward=False)
+	#turn(180)
+	# go(0.0, 0.0)
+	# turn(0)
 
 	# go(1.0, 0.0)
 	# turn(90)
@@ -216,8 +224,8 @@ if __name__ == '__main__':
 	# go(1.0, 0.0)
 	# turn(90)
 	
-	for i in range(5):
-		oneTurn()
+	# for i in range(25):
+	# 	oneTurn()
 	#go(1.5, 0.0)
 
 	# for i in range(0, 3):

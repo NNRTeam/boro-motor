@@ -24,6 +24,7 @@ private:
     missionManager* m_missionManager;
     Robot* m_robot;
     unsigned long long int m_last_odom_send = 0;
+    bool m_odomPending = false;
 };
 
 #endif // I2CCLIENT_H

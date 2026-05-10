@@ -67,8 +67,15 @@ class Mission
 
         void sendMisionUpdate()
         {
-            String d = "M" + String(getId()) + ";" + String(static_cast<int>(getStatus()))+"F";
-            Serial.println(d);
+            char buf[24];
+            char* p = buf;
+            *p++ = 'M';
+            itoa(getId(), p, 10);
+            while (*p) p++;
+            *p++ = ';';
+            *p++ = '0' + static_cast<int>(getStatus());
+            *p++ = 'F'; *p++ = '\n'; *p = '\0';
+            Serial.write(buf, (size_t)(p - buf));
         }
 
         void setStatus(Status newStatus) {
