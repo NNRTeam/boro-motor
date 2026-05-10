@@ -201,9 +201,11 @@ if __name__ == '__main__':
 
 	reset()
 	#stop()
-	
-	for i in range(5):
-		go(1.0, 0.0, forward=True)
+	# go(2.5, 0.0, forward=True)
+	# go(0.5, 0.0, forward=True)
+	# go(0.0, 0.0, forward=False)
+	for i in range(3):
+		go(2.0, 0.0, forward=True)
 		go(0.0, 0.0, forward=False)
 	#turn(180)
 	# go(0.0, 0.0)

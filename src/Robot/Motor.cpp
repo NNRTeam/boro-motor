@@ -41,7 +41,12 @@ void Motor::run()
     {
         step();
         m_stepCallback(m_cachedWheelForward);
-        m_lastStepTime = currentTime;
+        // Advance by ideal interval (not currentTime) to maintain correct
+        // average step rate despite timer quantization (50µs granularity).
+        m_lastStepTime += ist;
+        // If significantly behind (e.g. speed changed), resync to avoid burst
+        if (currentTime - m_lastStepTime >= 2U * ist)
+            m_lastStepTime = currentTime;
     }
 }
 

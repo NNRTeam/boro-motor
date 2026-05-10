@@ -121,10 +121,11 @@ void Robot::Control()
             hasActiveMission = m_missionManager->hasActiveMissions();
             if (hasActiveMission && m_missionManager->getCurrentMission()->getType() == Mission::Type::GO) {
                 Mission* CurrentMission = m_missionManager->getCurrentMission();
-                float const dx = m_missionManager->getCurrentMission()->getTargetX() - getX();
-                float const dy = m_missionManager->getCurrentMission()->getTargetY() - getY();
+                float const dx = CurrentMission->getTargetX() - getX();
+                float const dy = CurrentMission->getTargetY() - getY();
                 float const angle_cible = atan2(dy, dx);
                 CurrentMission->setThetaGoTo(angle_cible);
+                computeGoProfile(CurrentMission);
             }
         }
         if (hasActiveMission)
@@ -143,10 +144,13 @@ void Robot::Control()
                     stop();
                     return;
                 }
-                float const dx = nextMission->getTargetX() - getX();
-                float const dy = nextMission->getTargetY() - getY();
-                float const angle_cible = atan2(dy, dx);
-                nextMission->setThetaGoTo(angle_cible);
+                if (nextMission->getType() == Mission::Type::GO) {
+                    float const dx = nextMission->getTargetX() - getX();
+                    float const dy = nextMission->getTargetY() - getY();
+                    float const angle_cible = atan2(dy, dx);
+                    nextMission->setThetaGoTo(angle_cible);
+                    computeGoProfile(nextMission);
+                }
             }
 
             if (CurrentMission->getType() == Mission::Type::GO)
@@ -235,175 +239,42 @@ void Robot::setEmergencyStopMotorSpeed()
     setSpeeds(m_linearSpeedMotor, m_angularSpeedMotor);
 }
 
-void Robot::samsonUpdateMotors(Mission* mission)
+void Robot::computeGoProfile(Mission* mission)
 {
-    float const dt_s = m_dt / (float)1e6;
-
-    float const targetX     = mission->getTargetX();
-    float const targetY     = mission->getTargetY();
-    float const angle_cible = mission->getTargetTheta();
-    bool  const forward     = mission->isForward();
-
-    // ================================================================
-    // 1. ERREURS DE TRAJECTOIRE
-    // ================================================================
-    float const dx = getX() - targetX;
-    float const dy = getY() - targetY;
+    float const dx = mission->getTargetX() - getX();
+    float const dy = mission->getTargetY() - getY();
     float const distance = sqrt(dx * dx + dy * dy);
 
-    // Erreur latérale (perpendiculaire à la droite de référence)
-    float const lateral_error = dx * sin(angle_cible) - dy * cos(angle_cible);
+    m_goProfile.compute(
+        distance,
+        config::MAX_LINEAR_VELOCITY_M_S,
+        config::LINEAR_ACCELERATION_M_S2,
+        config::LINEAR_DECCELERATION_M_S2,
+        config::LINEAR_JERK_M_S3,
+        config::LINEAR_DECEL_JERK_M_S3
+    );
+    m_missionStartTime = micros();
+}
 
-    // Distance longitudinale signée (le long de la droite de référence)
-    // Négative → le robot est derrière la cible ; positive → il l'a dépassée
-    float const longitudinal_distance = dx * cos(angle_cible) + dy * sin(angle_cible);
+void Robot::samsonUpdateMotors(Mission* mission)
+{
+    bool const forward = mission->isForward();
 
-    // Distance restante (toujours >= 0)
-    float const remaining_distance = utils::getMax(-longitudinal_distance, 0.0f);
-
-    // Erreur angulaire
-    // En marche arrière l'arrière du robot doit pointer vers angle_cible
-    float theta_error;
-    if (forward)
-        theta_error = angle_cible - getTheta();
-    else
-        theta_error = angle_cible - getTheta() - M_PI;
-    theta_error = utils::normalizeAngle(theta_error);
-
-    // ================================================================
-    // 2. CONTRÔLE ANGULAIRE — suivi de trajectoire (Samson)
-    // ================================================================
-    float const kp_angular = 5.0f;   // gain correction cap
-    float const kp_lateral = 2.0f;   // gain correction latérale
-    float const k_damping  = 0.5f;   // amortissement latéral
-
-    // En marche arrière l'effet de ω sur la déviation latérale est inversé
-    float const lateral_sign = forward ? -1.0f : 1.0f;
-
-    float omega_desired = kp_angular * theta_error
-                        + lateral_sign * kp_lateral * lateral_error
-                        + lateral_sign * k_damping * lateral_error
-                          * abs(longitudinal_distance) / (distance + 0.01f);
-
-    // Saturer ω_desired
-    omega_desired = utils::getMin(
-        utils::getMax(omega_desired, -config::MAX_ANGULAR_VELOCITY_RAD_S),
-        config::MAX_ANGULAR_VELOCITY_RAD_S);
-
-    // Lisser l'accélération angulaire
-    float omega = m_angularSpeedMotor;
-    float const omega_diff      = omega_desired - omega;
-    float const max_omega_change = config::ANGULAR_ACCELERATION_RAD_S2 * dt_s;
-    if (abs(omega_diff) > max_omega_change)
-        omega += utils::sign(omega_diff) * max_omega_change;
-    else
-        omega = omega_desired;
-
-    // ================================================================
-    // 3. CONTRÔLE LINÉAIRE — profil S-curve
-    //    (jerk limité, accélération / décélération asymétriques)
-    // ================================================================
-    float const a_acc   = config::LINEAR_ACCELERATION_M_S2;   // accélération max
-    float const a_dec   = config::LINEAR_DECCELERATION_M_S2;  // décélération max
-    float const j_max   = config::LINEAR_JERK_M_S3;           // jerk max (accel ET decel)
-    float const v_limit = config::MAX_LINEAR_VELOCITY_M_S;    // vitesse linéaire max
-
-    // --- 3a. Vitesse max admissible pour freiner à temps ----------------
-    // Distance de freinage (profil trapézoïdal en accélération, jerk limité) :
-    //   d = v²/(2·a_dec) + v·a_dec/(2·j)
-    // Résolution de l'équation quadratique pour v :
-    //   (1/(2·a_dec))·v² + (a_dec/(2·j))·v − d = 0
-    float const braking_margin = utils::getMax(
-        remaining_distance - config::GO_MISSION_TOLERANCE_M * 0.5f, 0.0f);
-    // Use conservative deceleration for planning to account for S-curve
-    // controller lag (jerk ramp-up delay). This makes deceleration start
-    // earlier, giving the jerk limiter time to ramp up smoothly.
-    float const a_dec_plan = a_dec * 0.5f;
-    float const A_b  = 1.0f / (2.0f * a_dec_plan);
-    float const B_b  = a_dec_plan / (2.0f * j_max);
-    float const disc = B_b * B_b + 4.0f * A_b * braking_margin;
-    float v_max_braking;
-    if (disc > 0.0f)
-        v_max_braking = (-B_b + sqrt(disc)) / (2.0f * A_b);
-    else
-        v_max_braking = 0.0f;
-    v_max_braking = utils::getMin(v_max_braking, v_limit);
-
-    // --- 3b. Réduction douce pour erreur de cap / latérale --------------
-    // Facteurs très progressifs pour ne pas créer d'à-coups au début de la décélération
-    float const heading_slowdown = 1.0f / (1.0f + 0.3f * abs(theta_error));
-    float const lateral_slowdown = 1.0f / (1.0f + 0.4f * abs(lateral_error));
-    float const v_max_soft = v_max_braking
-                           * utils::getMax(0.6f, heading_slowdown * lateral_slowdown);
-
-    // Vitesse cible signée (cible douce pour le jerk limiter)
-    float const target_speed = forward ? v_max_soft : -v_max_soft;
-
-    // --- 3c. Limites d'accélération asymétriques ------------------------
-    // En marche avant  : accel > 0 → accélération, accel < 0 → décélération
-    // En marche arrière : accel < 0 → accélération, accel > 0 → décélération
-    float a_pos_limit, a_neg_limit;
-    if (forward) {
-        a_pos_limit =  a_acc;   // accélération (v augmente)
-        a_neg_limit = -a_dec;   // décélération (v diminue)
-    } else {
-        a_pos_limit =  a_dec;   // décélération (|v| diminue)
-        a_neg_limit = -a_acc;   // accélération (|v| augmente)
+    // Profil S-curve pré-calculé — feedforward pur, pas de feedback
+    if (m_lastControlTime <= m_missionStartTime) {
+        setSpeeds(0.0f, 0.0f);
+        return;
     }
+    float const elapsed = (float)(m_lastControlTime - m_missionStartTime) / 1e6f;
+    float v = m_goProfile.getSpeed(elapsed);
+    if (!forward) v = -v;
 
-    // --- 3d. Consigne d'accélération (P sur l'erreur de vitesse) --------
-    float const v_error  = target_speed - m_linearSpeedMotor;
-    float const kp_accel = 10.0f;
-    float accel_desired  = kp_accel * v_error;
-    accel_desired = utils::getMin(utils::getMax(accel_desired, a_neg_limit), a_pos_limit);
-
-    // --- 3e. Jerk limiter — variation de l'accélération bornée ----------
-    float const max_jerk_change = j_max * dt_s;
-    float const accel_diff = accel_desired - m_currentLinearAccel;
-    if (abs(accel_diff) > max_jerk_change)
-        m_currentLinearAccel += utils::sign(accel_diff) * max_jerk_change;
-    else
-        m_currentLinearAccel = accel_desired;
-
-    // Saturer aux limites asymétriques
-    m_currentLinearAccel = utils::getMin(
-        utils::getMax(m_currentLinearAccel, a_neg_limit), a_pos_limit);
-
-    // --- 3f. Intégration de la vitesse ----------------------------------
-    float v = m_linearSpeedMotor + m_currentLinearAccel * dt_s;
-
-    // --- 3g. Clamp direction uniquement (pas de clamp sur v_max_braking) -
-    // Le freinage est entièrement géré par le profil S-curve (étapes 3d-3e).
-    // On empêche seulement l'inversion de sens et le dépassement de v_limit.
-    if (forward) {
-        v = utils::getMax(v, 0.0f);
-        v = utils::getMin(v, v_limit);
-    } else {
-        v = utils::getMin(v, 0.0f);
-        v = utils::getMax(v, -v_limit);
-    }
-
-    // ================================================================
-    // 4. ARRÊT FINAL
-    // ================================================================
-    if (remaining_distance < config::GO_MISSION_TOLERANCE_M / 4.0f && abs(v) < 0.02f) {
-        v     = 0.0f;
-        omega = 0.0f;
-        m_currentLinearAccel = 0.0f;
-    }
-
-    // Près de la cible : ramener ω vers 0 progressivement
-    if (remaining_distance < 2.0f * config::GO_MISSION_TOLERANCE_M) {
-        float const max_omega_final = config::ANGULAR_ACCELERATION_RAD_S2 * dt_s;
-        if (abs(omega) > max_omega_final)
-            omega -= utils::sign(omega) * max_omega_final;
-        else
-            omega = 0.0f;
-    }
+    if (m_goProfile.isFinished(elapsed))
+        v = 0.0f;
 
     m_linearSpeedMotor  = v;
-    m_angularSpeedMotor = omega;
-    setSpeeds(v, omega);
+    m_angularSpeedMotor = 0.0f;
+    setSpeeds(v, 0.0f);
 }
 
 void Robot::rotationUpdateMotors()
@@ -454,11 +325,11 @@ bool Robot::checkMissionArrived()
 {
     Mission* currentMission = m_missionManager->getCurrentMission();
     if (currentMission->getType() == Mission::Type::GO) {
-        float const angle_cible = currentMission->getTargetTheta();
-        float const longitudinal_distance = (getX() - currentMission->getTargetX()) * cos(angle_cible)
-                                           + (getY() - currentMission->getTargetY()) * sin(angle_cible);
-        float const remaining_distance = utils::getMax(-longitudinal_distance, 0.0f);
-        if (remaining_distance < config::GO_MISSION_TOLERANCE_M && abs(m_linearSpeedMotor) < 0.05f) {
+        // Skip check on the same tick the mission started (m_lastControlTime may be before m_missionStartTime)
+        if (m_lastControlTime <= m_missionStartTime)
+            return false;
+        float const elapsed = (float)(m_lastControlTime - m_missionStartTime) / 1e6f;
+        if (m_goProfile.isFinished(elapsed)) {
             m_missionManager->endCurrentMission();
             m_angularSpeedMotor = 0.0;
             m_linearSpeedMotor = 0.0;
